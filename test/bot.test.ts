@@ -3,6 +3,7 @@ import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { PerpBot } from "../src/bot.ts";
+import type { BotCheckpoint, BotStateStore } from "../src/state-store.ts";
 import type { Tick } from "../src/types.ts";
 
 test("runs signal -> risk -> ack -> delayed fill -> position update", async () => {
@@ -174,3 +175,102 @@ test("blocks an order when initial margin exceeds marked equity", async () => {
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
   assert.match(logs.join("\n"), /\[MARGIN_RISK\] blocked/);
 });
+
+test("restores a filled position and continues monotonic exchange order ids", async () => {
+  const store = new MemoryStateStore();
+  const config = {
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 1,
+    stateStore: store,
+    logger: () => {}
+  } as const;
+  const first = await PerpBot.create(config);
+  for (const [index, price] of [100, 101, 102, 103].entries()) {
+    await first.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+  }
+  await first.waitForIdle();
+
+  const logs: string[] = [];
+  const restored = await PerpBot.create({ ...config, logger: (line: string) => logs.push(line) });
+  assert.deepEqual(restored.getPosition(), first.getPosition());
+  assert.equal(restored.isRecoveryRequired(), false);
+
+  for (const [index, price] of [103, 102, 101, 100].entries()) {
+    await restored.onTick({ seq: index + 5, symbol: "BTC-PERP", price, ts: index + 5 });
+  }
+  await restored.waitForIdle();
+
+  assert.match(logs.join("\n"), /\[RECOVERY\] restored/);
+  assert.match(logs.join("\n"), /\[ACK\] orderId=SIM-2/);
+});
+
+test("halts on restart when the checkpoint contains an unresolved order", async () => {
+  const store = new MemoryStateStore(unresolvedCheckpoint());
+  const logs: string[] = [];
+  const bot = await PerpBot.create({
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 1,
+    stateStore: store,
+    logger: (line) => logs.push(line)
+  });
+
+  assert.equal(bot.isRecoveryRequired(), true);
+  await bot.onTick({ seq: 10, symbol: "BTC-PERP", price: 110, ts: 10 });
+
+  assert.match(logs.join("\n"), /\[RECOVERY\] blocked openOrders=1/);
+  assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
+});
+
+class MemoryStateStore implements BotStateStore {
+  private checkpoint: BotCheckpoint | null;
+
+  constructor(checkpoint: BotCheckpoint | null = null) {
+    this.checkpoint = checkpoint;
+  }
+
+  async load(): Promise<BotCheckpoint | null> {
+    return this.checkpoint === null ? null : structuredClone(this.checkpoint);
+  }
+
+  async save(checkpoint: BotCheckpoint): Promise<void> {
+    this.checkpoint = structuredClone(checkpoint);
+  }
+}
+
+function unresolvedCheckpoint(): BotCheckpoint {
+  return {
+    version: 1,
+    symbol: "BTC-PERP",
+    positionState: {
+      position: { symbol: "BTC-PERP", side: "FLAT", qty: 0, entryPrice: 0, realizedPnl: 0 },
+      processedFillIds: []
+    },
+    orderTrackerState: {
+      orders: [
+        {
+          order: {
+            orderId: "SIM-1",
+            side: "BUY",
+            originalQty: 0.01,
+            filledQty: 0,
+            remainingQty: 0.01,
+            status: "ACKED"
+          },
+          symbol: "BTC-PERP",
+          processedFillIds: []
+        }
+      ]
+    },
+    nextOrderId: 2,
+    halted: false,
+    lastMarkPrice: 100
+  };
+}

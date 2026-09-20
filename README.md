@@ -20,6 +20,8 @@ simulateMarket
 
 第二轮加入了最小逐仓保证金账户。每个 Tick 都作为 mark price 更新 `equity / unrealizedPnl / initialMargin / maintenanceMargin / availableMargin`；下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
 
+第三轮加入版本化 checkpoint。ACK、有效 Fill 和模拟强平后会原子写入 `.runtime/perp-bot-state.json`，保存仓位、Fill 幂等集合、订单状态和下一模拟订单编号。正常完成的状态可恢复；如果重启时仍有 unresolved order，机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
+
 ## 运行
 
 ```bash
@@ -57,6 +59,7 @@ npm test
 - `src/exchange.ts`: 模拟 ACK 和延迟 Fill
 - `src/order-tracker.ts`: In-flight order、累计成交、剩余数量与状态
 - `src/margin.ts`: 逐仓权益、保证金门槛与强平条件
+- `src/state-store.ts`: 版本化 checkpoint 与原子 JSON 文件存储
 - `src/position.ts`: 持仓更新
 - `src/logging.ts`: 日志格式
 
@@ -77,3 +80,5 @@ npm run overlay
 Partial Fill 实验见 [`docs/partial-fill-learning-report.md`](docs/partial-fill-learning-report.md)。
 
 逐仓保证金与模拟强平说明见 [`docs/isolated-margin-learning-report.md`](docs/isolated-margin-learning-report.md)。
+
+持久化与重启恢复说明见 [`docs/checkpoint-recovery-learning-report.md`](docs/checkpoint-recovery-learning-report.md)。

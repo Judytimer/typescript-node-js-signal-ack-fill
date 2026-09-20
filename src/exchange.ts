@@ -25,6 +25,17 @@ export class SimulatedExchange {
     this.fillPlan = fillPlan;
   }
 
+  restoreNextOrderId(nextOrderId: number): void {
+    if (!Number.isInteger(nextOrderId) || nextOrderId < 1) {
+      throw new Error("nextOrderId must be a positive integer");
+    }
+    this.nextOrderId = nextOrderId;
+  }
+
+  getNextOrderId(): number {
+    return this.nextOrderId;
+  }
+
   submit(order: OrderRequest): SubmittedOrder {
     const orderId = `SIM-${this.nextOrderId++}`;
     const ack: OrderAck = {

@@ -52,6 +52,18 @@ test("applying the same identifiable fill twice changes position only once", () 
   });
 });
 
+test("restores position and processed fill ids without applying a duplicate again", () => {
+  const original = new PositionBook("BTC-PERP");
+  const firstFill = { ...fill("SIM-9", "BUY", 0.01), fee: 0.4 };
+  original.applyFill(firstFill);
+
+  const restored = PositionBook.fromState(original.exportState());
+  restored.applyFill(firstFill);
+
+  assert.deepEqual(restored.get(), original.get());
+  assert.deepEqual(restored.exportState(), original.exportState());
+});
+
 function fill(orderId: string, side: Fill["side"], qty: number): Fill {
   return {
     fillId: `${orderId}-FILL-1`,

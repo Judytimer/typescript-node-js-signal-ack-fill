@@ -64,6 +64,17 @@ test("cancels open orders and rejects fills arriving after cancellation", () => 
   assert.equal(tracker.processFill(fill("SIM-2-FILL-1", "SIM-2", "BUY", 0.01)).accepted, false);
 });
 
+test("restores order state and fill idempotency", () => {
+  const original = new InFlightOrderTracker();
+  original.trackAck(ack("SIM-7", "BUY", 0.01));
+  original.processFill(fill("SIM-7-FILL-1", "SIM-7", "BUY", 0.004));
+
+  const restored = InFlightOrderTracker.fromState(original.exportState());
+
+  assert.equal(restored.processFill(fill("SIM-7-FILL-1", "SIM-7", "BUY", 0.004)).accepted, false);
+  assert.deepEqual(restored.get("SIM-7"), original.get("SIM-7"));
+});
+
 function ack(orderId = "SIM-1", side: Fill["side"] = "BUY", qty = 0.01): OrderAck {
   return {
     orderId,

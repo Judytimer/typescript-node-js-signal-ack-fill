@@ -1,6 +1,11 @@
 import { round } from "./math.ts";
 import type { Fill, Position, PositionSide } from "./types.ts";
 
+export type PositionBookState = {
+  position: Position;
+  processedFillIds: string[];
+};
+
 export class PositionBook {
   private position: Position;
   private readonly processedFillIds = new Set<string>();
@@ -17,6 +22,22 @@ export class PositionBook {
 
   get(): Position {
     return { ...this.position };
+  }
+
+  static fromState(state: PositionBookState): PositionBook {
+    const book = new PositionBook(state.position.symbol);
+    book.position = { ...state.position };
+    for (const fillId of state.processedFillIds) {
+      book.processedFillIds.add(fillId);
+    }
+    return book;
+  }
+
+  exportState(): PositionBookState {
+    return {
+      position: this.get(),
+      processedFillIds: [...this.processedFillIds]
+    };
   }
 
   applyFill(fill: Fill): Position {

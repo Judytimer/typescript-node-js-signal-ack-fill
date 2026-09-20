@@ -23,8 +23,41 @@ type TrackedOrder = {
   processedFillIds: Set<string>;
 };
 
+export type OrderTrackerState = {
+  orders: Array<{
+    order: InFlightOrder;
+    symbol: string;
+    processedFillIds: string[];
+  }>;
+};
+
 export class InFlightOrderTracker {
   private readonly orders = new Map<string, TrackedOrder>();
+
+  static fromState(state: OrderTrackerState): InFlightOrderTracker {
+    const tracker = new InFlightOrderTracker();
+    for (const item of state.orders) {
+      if (tracker.orders.has(item.order.orderId)) {
+        throw new Error(`duplicate restored order ${item.order.orderId}`);
+      }
+      tracker.orders.set(item.order.orderId, {
+        order: { ...item.order },
+        symbol: item.symbol,
+        processedFillIds: new Set(item.processedFillIds)
+      });
+    }
+    return tracker;
+  }
+
+  exportState(): OrderTrackerState {
+    return {
+      orders: [...this.orders.values()].map((tracked) => ({
+        order: { ...tracked.order },
+        symbol: tracked.symbol,
+        processedFillIds: [...tracked.processedFillIds]
+      }))
+    };
+  }
 
   trackAck(ack: OrderAck): InFlightOrder {
     if (this.orders.has(ack.orderId)) {

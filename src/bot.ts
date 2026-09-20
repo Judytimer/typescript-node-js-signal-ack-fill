@@ -19,6 +19,7 @@ import { round } from "./math.ts";
 import { IsolatedMarginAccount } from "./margin.ts";
 import type { MarginConfig, MarginSnapshot } from "./margin.ts";
 import type { Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
+import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
 
 export type BotConfig = {
   symbol: string;
@@ -29,6 +30,7 @@ export type BotConfig = {
   fillDelayMs: FillDelay;
   fillPlan?: readonly FillPlanStep[];
   margin?: MarginConfig;
+  stateStore?: BotStateStore;
   logger?: Logger;
 };
 
@@ -36,13 +38,16 @@ export class PerpBot {
   private readonly strategy: MovingAverageSignal;
   private readonly risk: RiskManager;
   private readonly exchange: SimulatedExchange;
-  private readonly positions: PositionBook;
+  private positions: PositionBook;
   private readonly logger: Logger;
   private readonly pendingFills: Promise<void>[] = [];
-  private readonly orderTracker = new InFlightOrderTracker();
+  private orderTracker = new InFlightOrderTracker();
   private readonly margin: IsolatedMarginAccount;
   private lastAccountSnapshot: MarginSnapshot | null = null;
   private halted = false;
+  private recoveryRequired = false;
+  private readonly stateStore?: BotStateStore;
+  private persistTail: Promise<void> = Promise.resolve();
 
   constructor(config: BotConfig) {
     this.strategy = new MovingAverageSignal(config.shortWindow, config.longWindow);
@@ -56,6 +61,13 @@ export class PerpBot {
       config.margin ?? { collateral: 10_000, leverage: 5, maintenanceMarginRate: 0.005 }
     );
     this.logger = config.logger ?? console.log;
+    this.stateStore = config.stateStore;
+  }
+
+  static async create(config: BotConfig): Promise<PerpBot> {
+    const bot = new PerpBot(config);
+    await bot.restore();
+    return bot;
   }
 
   async onTick(tick: Tick): Promise<void> {
@@ -65,13 +77,18 @@ export class PerpBot {
     this.lastAccountSnapshot = this.margin.snapshot(markedPosition, tick.price);
     this.logger(formatAccount(this.lastAccountSnapshot));
 
+    if (this.recoveryRequired) {
+      this.logger(`[RECOVERY] blocked openOrders=${this.orderTracker.getOpenOrders().length}`);
+      return;
+    }
+
     if (this.halted) {
       this.logger('[MARGIN_RISK] blocked reason="halted after liquidation"');
       return;
     }
 
     if (this.lastAccountSnapshot.liquidatable) {
-      this.liquidate(markedPosition, tick, this.lastAccountSnapshot);
+      await this.liquidate(markedPosition, tick, this.lastAccountSnapshot);
       return;
     }
 
@@ -108,9 +125,10 @@ export class PerpBot {
     const submitted = this.exchange.submit(decision.order);
     this.orderTracker.trackAck(submitted.ack);
     this.logger(formatAck(submitted.ack));
+    await this.persist();
 
     const fillTasks = submitted.fills.map((fillPromise) =>
-      fillPromise.then((fill) => {
+      fillPromise.then(async (fill) => {
         this.logger(formatFill(fill));
         const result = this.orderTracker.processFill(fill);
         this.logger(formatOrderState(result.order));
@@ -121,6 +139,7 @@ export class PerpBot {
         this.logger(formatPosition(position));
         this.lastAccountSnapshot = this.margin.snapshot(position, fill.price);
         this.logger(formatAccount(this.lastAccountSnapshot));
+        await this.persist();
       })
     );
 
@@ -129,6 +148,7 @@ export class PerpBot {
 
   async waitForIdle(): Promise<void> {
     await Promise.all(this.pendingFills);
+    await this.persistTail;
   }
 
   getPosition(): Position {
@@ -139,7 +159,11 @@ export class PerpBot {
     return this.lastAccountSnapshot === null ? null : { ...this.lastAccountSnapshot };
   }
 
-  private liquidate(position: Position, tick: Tick, snapshot: MarginSnapshot): void {
+  isRecoveryRequired(): boolean {
+    return this.recoveryRequired;
+  }
+
+  private async liquidate(position: Position, tick: Tick, snapshot: MarginSnapshot): Promise<void> {
     for (const canceled of this.orderTracker.cancelOpenOrders()) {
       this.logger(formatOrderState(canceled));
     }
@@ -163,6 +187,54 @@ export class PerpBot {
     this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.price);
     this.logger(formatAccount(this.lastAccountSnapshot));
     this.halted = true;
+    await this.persist();
+  }
+
+  private async restore(): Promise<void> {
+    if (this.stateStore === undefined) {
+      return;
+    }
+    const checkpoint = await this.stateStore.load();
+    if (checkpoint === null) {
+      return;
+    }
+    if (checkpoint.symbol !== this.positions.get().symbol) {
+      throw new Error(
+        `checkpoint symbol ${checkpoint.symbol} does not match bot symbol ${this.positions.get().symbol}`
+      );
+    }
+
+    this.positions = PositionBook.fromState(checkpoint.positionState);
+    this.orderTracker = InFlightOrderTracker.fromState(checkpoint.orderTrackerState);
+    this.exchange.restoreNextOrderId(checkpoint.nextOrderId);
+    this.halted = checkpoint.halted;
+    this.recoveryRequired = this.orderTracker.getOpenOrders().length > 0;
+    if (checkpoint.lastMarkPrice !== null) {
+      this.lastAccountSnapshot = this.margin.snapshot(this.positions.get(), checkpoint.lastMarkPrice);
+    }
+    this.logger(
+      `[RECOVERY] restored position=${this.positions.get().side} openOrders=${this.orderTracker.getOpenOrders().length} nextOrderId=${checkpoint.nextOrderId}`
+    );
+  }
+
+  private persist(): Promise<void> {
+    if (this.stateStore === undefined) {
+      return Promise.resolve();
+    }
+    this.persistTail = this.persistTail.then(() => this.stateStore?.save(this.buildCheckpoint()));
+    return this.persistTail;
+  }
+
+  private buildCheckpoint(): BotCheckpoint {
+    return {
+      version: 1,
+      symbol: this.positions.get().symbol,
+      positionState: this.positions.exportState(),
+      orderTrackerState: this.orderTracker.exportState(),
+      nextOrderId: this.exchange.getNextOrderId(),
+      halted: this.halted,
+      lastMarkPrice: this.lastAccountSnapshot?.markPrice ?? null
+    };
   }
 }
 
