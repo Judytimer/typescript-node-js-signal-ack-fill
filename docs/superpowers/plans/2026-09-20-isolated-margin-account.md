@@ -79,4 +79,4 @@
 
 - [x] Document formulas, synthetic liquidation semantics, state ownership, TDD evidence, and explicit non-goals.
 - [x] Run fresh `npm test`, `npm start`, and `npm run overlay`; require zero exit codes.
-- [ ] Review `git diff --check`, commit only task-owned files, push `main`, and verify remote SHA.
+- [x] Review `git diff --check`, commit only task-owned files, push `main`, and verify remote SHA.
