@@ -73,4 +73,4 @@
 
 - [x] Ignore local runtime checkpoint files and document recovery semantics and limitations.
 - [x] Run fresh `npm test`, `npm start`, `npm run overlay`, and `git diff --check`.
-- [ ] Commit task-owned files, push `main`, and verify local/remote SHA equality.
+- [x] Commit task-owned files, push `main`, and verify local/remote SHA equality.
