@@ -46,14 +46,32 @@ test("tracks partial fills, remaining quantity, terminal state, and duplicate fi
   assert.equal(tracker.getOpenOrders().length, 0);
 });
 
-function ack(): OrderAck {
+test("cancels open orders and rejects fills arriving after cancellation", () => {
+  const tracker = new InFlightOrderTracker();
+  tracker.trackAck(ack("SIM-2", "BUY", 0.01));
+
+  assert.deepEqual(tracker.cancelOpenOrders(), [
+    {
+      orderId: "SIM-2",
+      side: "BUY",
+      originalQty: 0.01,
+      filledQty: 0,
+      remainingQty: 0.01,
+      status: "CANCELED"
+    }
+  ]);
+  assert.equal(tracker.getOpenOrders().length, 0);
+  assert.equal(tracker.processFill(fill("SIM-2-FILL-1", "SIM-2", "BUY", 0.01)).accepted, false);
+});
+
+function ack(orderId = "SIM-1", side: Fill["side"] = "BUY", qty = 0.01): OrderAck {
   return {
-    orderId: "SIM-1",
+    orderId,
     status: "ACKED",
     request: {
       symbol: "BTC-PERP",
-      side: "BUY",
-      qty: 0.01,
+      side,
+      qty,
       price: 100,
       reason: "test",
       ts: 1
@@ -62,12 +80,19 @@ function ack(): OrderAck {
   };
 }
 
-function fill(fillId: string, qty: number): Fill {
+function fill(
+  fillId: string,
+  orderIdOrQty: string | number,
+  side: Fill["side"] = "BUY",
+  explicitQty?: number
+): Fill {
+  const orderId = typeof orderIdOrQty === "string" ? orderIdOrQty : "SIM-1";
+  const qty = typeof orderIdOrQty === "number" ? orderIdOrQty : explicitQty ?? 0;
   return {
     fillId,
-    orderId: "SIM-1",
+    orderId,
     symbol: "BTC-PERP",
-    side: "BUY",
+    side,
     qty,
     price: 100,
     fee: 0,

@@ -9,6 +9,7 @@ const bot = new PerpBot({
   longWindow: 6,
   orderQty: 0.01,
   maxAbsPosition: 0.03,
+  margin: { collateral: 1_000, leverage: 5, maintenanceMarginRate: 0.005 },
   fillDelayMs: 350
 });
 

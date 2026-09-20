@@ -126,3 +126,51 @@ test("keeps remaining exposure pending until all partial fills complete", async 
   assert.equal(bot.getPosition().side, "LONG");
   assert.equal(bot.getPosition().qty, 0.01);
 });
+
+test("liquidates an under-margined position at mark and halts new strategy orders", async () => {
+  const logs: string[] = [];
+  const bot = new PerpBot({
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 1,
+    margin: { collateral: 0.1, leverage: 20, maintenanceMarginRate: 0.01 },
+    logger: (line) => logs.push(line)
+  });
+
+  for (const [index, price] of [100, 101, 102, 103].entries()) {
+    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+  }
+  await bot.waitForIdle();
+
+  await bot.onTick({ seq: 5, symbol: "BTC-PERP", price: 90, ts: 5 });
+  await bot.onTick({ seq: 6, symbol: "BTC-PERP", price: 110, ts: 6 });
+
+  assert.equal(bot.getPosition().side, "FLAT");
+  assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 1);
+  assert.match(logs.join("\n"), /\[LIQUIDATION\].*mark=90/);
+  assert.match(logs.join("\n"), /halted after liquidation/);
+});
+
+test("blocks an order when initial margin exceeds marked equity", async () => {
+  const logs: string[] = [];
+  const bot = new PerpBot({
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 1,
+    margin: { collateral: 0.01, leverage: 2, maintenanceMarginRate: 0.005 },
+    logger: (line) => logs.push(line)
+  });
+
+  for (const [index, price] of [100, 101, 102, 103].entries()) {
+    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+  }
+
+  assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
+  assert.match(logs.join("\n"), /\[MARGIN_RISK\] blocked/);
+});

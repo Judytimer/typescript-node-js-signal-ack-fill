@@ -1,7 +1,7 @@
 import { round } from "./math.ts";
 import type { Fill, OrderAck, OrderSide } from "./types.ts";
 
-export type InFlightOrderStatus = "ACKED" | "PARTIALLY_FILLED" | "FILLED";
+export type InFlightOrderStatus = "ACKED" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED";
 
 export type InFlightOrder = {
   orderId: string;
@@ -53,6 +53,10 @@ export class InFlightOrderTracker {
       throw new Error(`fill ${fill.fillId} belongs to unknown order ${fill.orderId}`);
     }
 
+    if (tracked.order.status === "CANCELED") {
+      return { accepted: false, order: { ...tracked.order } };
+    }
+
     if (tracked.processedFillIds.has(fill.fillId)) {
       return { accepted: false, order: { ...tracked.order } };
     }
@@ -77,6 +81,17 @@ export class InFlightOrderTracker {
     return { accepted: true, order: { ...tracked.order } };
   }
 
+  cancelOpenOrders(): InFlightOrder[] {
+    const canceled: InFlightOrder[] = [];
+    for (const tracked of this.orders.values()) {
+      if (tracked.order.status === "ACKED" || tracked.order.status === "PARTIALLY_FILLED") {
+        tracked.order = { ...tracked.order, status: "CANCELED" };
+        canceled.push({ ...tracked.order });
+      }
+    }
+    return canceled;
+  }
+
   get(orderId: string): InFlightOrder | undefined {
     const tracked = this.orders.get(orderId);
     return tracked === undefined ? undefined : { ...tracked.order };
@@ -84,7 +99,9 @@ export class InFlightOrderTracker {
 
   getOpenOrders(): InFlightOrder[] {
     return [...this.orders.values()]
-      .filter((tracked) => tracked.order.status !== "FILLED")
+      .filter(
+        (tracked) => tracked.order.status === "ACKED" || tracked.order.status === "PARTIALLY_FILLED"
+      )
       .map((tracked) => ({ ...tracked.order }));
   }
 }

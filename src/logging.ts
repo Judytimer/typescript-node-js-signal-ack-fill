@@ -1,5 +1,6 @@
 import type { Fill, OrderAck, Position, RiskDecision, Signal, Tick } from "./types.ts";
 import type { InFlightOrder } from "./order-tracker.ts";
+import type { MarginSnapshot } from "./margin.ts";
 
 export function formatTick(tick: Tick): string {
   return `[TICK] seq=${tick.seq} symbol=${tick.symbol} price=${tick.price}`;
@@ -31,6 +32,10 @@ export function formatFill(fill: Fill): string {
 
 export function formatOrderState(order: InFlightOrder): string {
   return `[ORDER] orderId=${order.orderId} status=${order.status} filled=${order.filledQty} remaining=${order.remainingQty}`;
+}
+
+export function formatAccount(snapshot: MarginSnapshot): string {
+  return `[ACCOUNT] mark=${snapshot.markPrice} equity=${snapshot.equity} unrealizedPnl=${snapshot.unrealizedPnl} initialMargin=${snapshot.initialMargin} maintenanceMargin=${snapshot.maintenanceMargin} availableMargin=${snapshot.availableMargin} marginRatio=${snapshot.marginRatio}`;
 }
 
 export function formatPosition(position: Position): string {

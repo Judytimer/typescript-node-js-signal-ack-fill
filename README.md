@@ -18,6 +18,8 @@ simulateMarket
 
 订单生命周期由 `InFlightOrderTracker` 持有：`ACKED -> PARTIALLY_FILLED -> FILLED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
 
+第二轮加入了最小逐仓保证金账户。每个 Tick 都作为 mark price 更新 `equity / unrealizedPnl / initialMargin / maintenanceMargin / availableMargin`；下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
+
 ## 运行
 
 ```bash
@@ -54,6 +56,7 @@ npm test
 - `src/risk.ts`: 最小风控
 - `src/exchange.ts`: 模拟 ACK 和延迟 Fill
 - `src/order-tracker.ts`: In-flight order、累计成交、剩余数量与状态
+- `src/margin.ts`: 逐仓权益、保证金门槛与强平条件
 - `src/position.ts`: 持仓更新
 - `src/logging.ts`: 日志格式
 
@@ -72,3 +75,5 @@ npm run overlay
 实现说明和未经验证的假设见 [`docs/overlay-learning-report.md`](docs/overlay-learning-report.md)。
 
 Partial Fill 实验见 [`docs/partial-fill-learning-report.md`](docs/partial-fill-learning-report.md)。
+
+逐仓保证金与模拟强平说明见 [`docs/isolated-margin-learning-report.md`](docs/isolated-margin-learning-report.md)。
