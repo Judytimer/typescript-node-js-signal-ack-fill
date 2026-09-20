@@ -1,0 +1,90 @@
+import { round } from "./math.ts";
+import type { Fill, OrderAck, OrderSide } from "./types.ts";
+
+export type InFlightOrderStatus = "ACKED" | "PARTIALLY_FILLED" | "FILLED";
+
+export type InFlightOrder = {
+  orderId: string;
+  side: OrderSide;
+  originalQty: number;
+  filledQty: number;
+  remainingQty: number;
+  status: InFlightOrderStatus;
+};
+
+export type FillProcessResult = {
+  accepted: boolean;
+  order: InFlightOrder;
+};
+
+type TrackedOrder = {
+  order: InFlightOrder;
+  symbol: string;
+  processedFillIds: Set<string>;
+};
+
+export class InFlightOrderTracker {
+  private readonly orders = new Map<string, TrackedOrder>();
+
+  trackAck(ack: OrderAck): InFlightOrder {
+    if (this.orders.has(ack.orderId)) {
+      throw new Error(`order ${ack.orderId} is already tracked`);
+    }
+
+    const order: InFlightOrder = {
+      orderId: ack.orderId,
+      side: ack.request.side,
+      originalQty: ack.request.qty,
+      filledQty: 0,
+      remainingQty: ack.request.qty,
+      status: "ACKED"
+    };
+    this.orders.set(ack.orderId, {
+      order,
+      symbol: ack.request.symbol,
+      processedFillIds: new Set<string>()
+    });
+    return { ...order };
+  }
+
+  processFill(fill: Fill): FillProcessResult {
+    const tracked = this.orders.get(fill.orderId);
+    if (tracked === undefined) {
+      throw new Error(`fill ${fill.fillId} belongs to unknown order ${fill.orderId}`);
+    }
+
+    if (tracked.processedFillIds.has(fill.fillId)) {
+      return { accepted: false, order: { ...tracked.order } };
+    }
+
+    if (fill.symbol !== tracked.symbol || fill.side !== tracked.order.side) {
+      throw new Error(`fill ${fill.fillId} does not match order ${fill.orderId}`);
+    }
+    if (fill.qty <= 0 || fill.qty > tracked.order.remainingQty) {
+      throw new Error(`fill ${fill.fillId} exceeds remaining quantity`);
+    }
+
+    const filledQty = round(tracked.order.filledQty + fill.qty);
+    const remainingQty = round(tracked.order.originalQty - filledQty);
+    tracked.order = {
+      ...tracked.order,
+      filledQty,
+      remainingQty,
+      status: remainingQty === 0 ? "FILLED" : "PARTIALLY_FILLED"
+    };
+    tracked.processedFillIds.add(fill.fillId);
+
+    return { accepted: true, order: { ...tracked.order } };
+  }
+
+  get(orderId: string): InFlightOrder | undefined {
+    const tracked = this.orders.get(orderId);
+    return tracked === undefined ? undefined : { ...tracked.order };
+  }
+
+  getOpenOrders(): InFlightOrder[] {
+    return [...this.orders.values()]
+      .filter((tracked) => tracked.order.status !== "FILLED")
+      .map((tracked) => ({ ...tracked.order }));
+  }
+}

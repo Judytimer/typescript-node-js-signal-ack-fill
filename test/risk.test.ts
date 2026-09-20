@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { RiskManager } from "../src/risk.ts";
+import type { Position, SignalAction } from "../src/types.ts";
+
+const risk = new RiskManager({ orderQty: 0.01, maxAbsPosition: 0.03 });
+const tick = { seq: 1, symbol: "BTC-PERP", price: 100, ts: 1 };
+
+function evaluate(action: SignalAction, position: Position) {
+  return risk.evaluate(
+    { action, shortMa: 101, longMa: 100, reason: "target-position test" },
+    position,
+    tick
+  );
+}
+
+test("LONG 0.02 -> target SHORT 0.01 requires SELL 0.03", () => {
+  const decision = evaluate("SHORT", position("LONG", 0.02));
+  assert.equal(decision.approved, true);
+  if (decision.approved) {
+    assert.equal(decision.order.side, "SELL");
+    assert.equal(decision.order.qty, 0.03);
+  }
+});
+
+test("SHORT 0.02 -> target LONG 0.01 requires BUY 0.03", () => {
+  const decision = evaluate("LONG", position("SHORT", 0.02));
+  assert.equal(decision.approved, true);
+  if (decision.approved) {
+    assert.equal(decision.order.side, "BUY");
+    assert.equal(decision.order.qty, 0.03);
+  }
+});
+
+test("FLAT -> target LONG 0.01 requires BUY 0.01", () => {
+  const decision = evaluate("LONG", position("FLAT", 0));
+  assert.equal(decision.approved, true);
+  if (decision.approved) {
+    assert.equal(decision.order.side, "BUY");
+    assert.equal(decision.order.qty, 0.01);
+  }
+});
+
+test("LONG 0.01 -> target LONG 0.01 requires no order", () => {
+  const decision = evaluate("LONG", position("LONG", 0.01));
+  assert.deepEqual(decision, { approved: false, reason: "already LONG" });
+});
+
+function position(side: Position["side"], qty: number): Position {
+  return {
+    symbol: "BTC-PERP",
+    side,
+    qty,
+    entryPrice: qty === 0 ? 0 : 100,
+    realizedPnl: 0
+  };
+}

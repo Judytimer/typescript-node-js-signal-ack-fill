@@ -1,0 +1,11 @@
+{
+  "name": "minimal-perp-quant-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "overlay": "node --experimental-strip-types src/overlay-index.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}
