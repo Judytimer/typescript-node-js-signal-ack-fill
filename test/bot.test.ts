@@ -151,7 +151,10 @@ test("liquidates an under-margined position at mark and halts new strategy order
 
   assert.equal(bot.getPosition().side, "FLAT");
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 1);
-  assert.match(logs.join("\n"), /\[LIQUIDATION\].*mark=90/);
+  assert.match(
+    logs.join("\n"),
+    /\[LIQUIDATION\].*triggerMark=90 executionPrice=90 assumption=EXECUTION_AT_MARK/
+  );
   assert.match(logs.join("\n"), /halted after liquidation/);
 });
 

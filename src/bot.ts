@@ -20,6 +20,7 @@ import { IsolatedMarginAccount } from "./margin.ts";
 import type { MarginConfig, MarginSnapshot } from "./margin.ts";
 import type { Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
 import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
+import { PaperLiquidationExecutor } from "./liquidation.ts";
 
 export type BotConfig = {
   symbol: string;
@@ -43,6 +44,7 @@ export class PerpBot {
   private readonly pendingFills: Promise<void>[] = [];
   private orderTracker = new InFlightOrderTracker();
   private readonly margin: IsolatedMarginAccount;
+  private readonly liquidationExecutor = new PaperLiquidationExecutor();
   private lastAccountSnapshot: MarginSnapshot | null = null;
   private lastMarkPrice: number | null = null;
   private halted = false;
@@ -140,8 +142,8 @@ export class PerpBot {
         }
         const position = this.positions.applyFill(fill);
         this.logger(formatPosition(position));
-        // A trade fill changes the position, but it must not replace the latest fair mark.
-        this.lastAccountSnapshot = this.margin.snapshot(position, this.lastMarkPrice ?? fill.price);
+        // A trade fill changes the position, but it does not own the market mark.
+        this.lastAccountSnapshot = this.margin.snapshot(position, this.requireLatestMarkPrice());
         this.logger(formatAccount(this.lastAccountSnapshot));
         await this.persist();
       })
@@ -172,26 +174,23 @@ export class PerpBot {
       this.logger(formatOrderState(canceled));
     }
 
-    const side = position.side === "LONG" ? "SELL" : "BUY";
-    const fill = {
-      fillId: `LIQ-${tick.seq}-FILL-1`,
-      orderId: `LIQ-${tick.seq}`,
-      symbol: position.symbol,
-      side,
-      qty: position.qty,
-      price: tick.markPrice,
-      fee: 0,
-      ts: tick.ts
-    } as const;
+    const execution = this.liquidationExecutor.execute(position, tick);
     this.logger(
-      `[LIQUIDATION] side=${side} qty=${position.qty} mark=${tick.markPrice} equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
+      `[LIQUIDATION] side=${execution.fill.side} qty=${position.qty} triggerMark=${execution.triggerMarkPrice} executionPrice=${execution.executionPrice} assumption=EXECUTION_AT_MARK equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
     );
-    const closedPosition = this.positions.applyFill(fill);
+    const closedPosition = this.positions.applyFill(execution.fill);
     this.logger(formatPosition(closedPosition));
     this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.markPrice);
     this.logger(formatAccount(this.lastAccountSnapshot));
     this.halted = true;
     await this.persist();
+  }
+
+  private requireLatestMarkPrice(): number {
+    if (this.lastMarkPrice === null) {
+      throw new Error("invariant violation: cannot value a fill without a latest mark price");
+    }
+    return this.lastMarkPrice;
   }
 
   private async restore(): Promise<void> {

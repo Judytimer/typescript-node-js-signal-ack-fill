@@ -18,7 +18,7 @@ simulateMarket
 
 订单生命周期由 `InFlightOrderTracker` 持有：`ACKED -> PARTIALLY_FILLED -> FILLED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
 
-第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平只使用 mark，index 作为外部参考记录；下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
+第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平触发只使用 mark，index 目前仅代表外部参考输入；本模拟器没有实现交易所级 mark-price 推导。强平触发与执行已分开建模，但当前 paper simplification 仍假设 `liquidation execution price = mark price`，日志会同时记录 trigger mark 与 execution price。下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
 
 第三轮加入版本化 checkpoint。ACK、有效 Fill 和模拟强平后会原子写入 `.runtime/perp-bot-state.json`，保存仓位、Fill 幂等集合、订单状态和下一模拟订单编号。正常完成的状态可恢复；如果重启时仍有 unresolved order，机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
 
