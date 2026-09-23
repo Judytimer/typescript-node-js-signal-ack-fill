@@ -158,6 +158,64 @@ test("liquidates an under-margined position at mark and halts new strategy order
   assert.match(logs.join("\n"), /halted after liquidation/);
 });
 
+test("documents current cancel-then-late-fill behavior after liquidation", async () => {
+  const logs: string[] = [];
+  const bot = new PerpBot({
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 40,
+    margin: { collateral: 0.1, leverage: 20, maintenanceMarginRate: 0.01 },
+    logger: (line) => logs.push(line)
+  });
+
+  for (const [index, price] of [100, 101, 102, 103].entries()) {
+    await bot.onTick(tick(index + 1, price));
+  }
+  await bot.waitForIdle();
+  assert.deepEqual(bot.getPosition(), {
+    symbol: "BTC-PERP",
+    side: "LONG",
+    qty: 0.01,
+    entryPrice: 103,
+    realizedPnl: -0.000412
+  });
+
+  // The reversal order is ACKED at a healthy mark, but its fill remains delayed.
+  await bot.onTick(tick(5, 80, 103, 100));
+  assert.match(logs.join("\n"), /\[ACK\] orderId=SIM-2 side=SELL qty=0\.02/);
+
+  // A later mark triggers liquidation and locally cancels the ACKED reversal.
+  await bot.onTick(tick(6, 80, 90, 95));
+  assert.equal(bot.getPosition().side, "FLAT");
+
+  // The already scheduled exchange fill still arrives after local cancellation.
+  await bot.waitForIdle();
+  const trace = logs.filter(
+    (line) =>
+      line.includes("orderId=SIM-2") ||
+      line.startsWith("[LIQUIDATION]") ||
+      line.startsWith("[POSITION]")
+  );
+  const ackIndex = trace.findIndex((line) => line.startsWith("[ACK] orderId=SIM-2"));
+  const canceledIndex = trace.findIndex(
+    (line) => line.startsWith("[ORDER] orderId=SIM-2 status=CANCELED")
+  );
+  const liquidationIndex = trace.findIndex((line) => line.startsWith("[LIQUIDATION]"));
+  const lateFillIndex = trace.findIndex((line) => line.startsWith("[FILL]") && line.includes("SIM-2"));
+
+  assert.ok(ackIndex < canceledIndex);
+  assert.ok(canceledIndex < liquidationIndex);
+  assert.ok(liquidationIndex < lateFillIndex);
+  assert.match(trace[lateFillIndex + 1] ?? "", /status=CANCELED/);
+
+  // Observation only: the tracker rejects the late fill, so Position stays FLAT.
+  // Whether an exchange-reported fill may be discarded is intentionally unresolved.
+  assert.equal(bot.getPosition().side, "FLAT");
+});
+
 test("blocks an order when initial margin exceeds marked equity", async () => {
   const logs: string[] = [];
   const bot = new PerpBot({
