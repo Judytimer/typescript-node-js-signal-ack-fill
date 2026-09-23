@@ -3,7 +3,7 @@ import type { InFlightOrder } from "./order-tracker.ts";
 import type { MarginSnapshot } from "./margin.ts";
 
 export function formatTick(tick: Tick): string {
-  return `[TICK] seq=${tick.seq} symbol=${tick.symbol} price=${tick.price}`;
+  return `[TICK] seq=${tick.seq} symbol=${tick.symbol} last=${tick.lastPrice} mark=${tick.markPrice} index=${tick.indexPrice}`;
 }
 
 export function formatSignal(signal: Signal): string {

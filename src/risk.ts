@@ -54,7 +54,7 @@ export class RiskManager {
         symbol: tick.symbol,
         side,
         qty: Math.abs(deltaQty),
-        price: tick.price,
+        price: tick.lastPrice,
         reason: signal.reason,
         ts: tick.ts
       }

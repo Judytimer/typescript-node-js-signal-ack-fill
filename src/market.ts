@@ -15,10 +15,13 @@ export function* simulateMarket(config: MarketConfig): Generator<Tick> {
     const noise = Math.sin(seq * 1.7) * 5;
     price = Math.max(1, price + trend + wave + noise);
 
+    const lastPrice = Math.round(price * 100) / 100;
     yield {
       seq,
       symbol: config.symbol,
-      price: Math.round(price * 100) / 100,
+      lastPrice,
+      markPrice: lastPrice,
+      indexPrice: lastPrice,
       ts: Date.now()
     };
   }

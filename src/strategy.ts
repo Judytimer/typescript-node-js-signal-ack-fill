@@ -16,7 +16,7 @@ export class MovingAverageSignal {
   }
 
   onTick(tick: Tick): Signal {
-    this.prices.push(tick.price);
+    this.prices.push(tick.lastPrice);
 
     const shortMa = sma(this.prices, this.shortWindow);
     const longMa = sma(this.prices, this.longWindow);

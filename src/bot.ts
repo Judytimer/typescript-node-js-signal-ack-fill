@@ -44,6 +44,7 @@ export class PerpBot {
   private orderTracker = new InFlightOrderTracker();
   private readonly margin: IsolatedMarginAccount;
   private lastAccountSnapshot: MarginSnapshot | null = null;
+  private lastMarkPrice: number | null = null;
   private halted = false;
   private recoveryRequired = false;
   private readonly stateStore?: BotStateStore;
@@ -71,10 +72,12 @@ export class PerpBot {
   }
 
   async onTick(tick: Tick): Promise<void> {
+    validateTickPrices(tick);
     this.logger(formatTick(tick));
 
     const markedPosition = this.positions.get();
-    this.lastAccountSnapshot = this.margin.snapshot(markedPosition, tick.price);
+    this.lastMarkPrice = tick.markPrice;
+    this.lastAccountSnapshot = this.margin.snapshot(markedPosition, tick.markPrice);
     this.logger(formatAccount(this.lastAccountSnapshot));
 
     if (this.recoveryRequired) {
@@ -111,7 +114,7 @@ export class PerpBot {
     }
 
     const postOrderPosition = projectOrder(projectedPosition, decision.order);
-    const postOrderAccount = this.margin.snapshot(postOrderPosition, tick.price);
+    const postOrderAccount = this.margin.snapshot(postOrderPosition, tick.markPrice);
     if (postOrderAccount.initialMargin > this.lastAccountSnapshot.equity) {
       this.logger(
         `[MARGIN_RISK] blocked requiredInitialMargin=${postOrderAccount.initialMargin} equity=${this.lastAccountSnapshot.equity}`
@@ -137,7 +140,8 @@ export class PerpBot {
         }
         const position = this.positions.applyFill(fill);
         this.logger(formatPosition(position));
-        this.lastAccountSnapshot = this.margin.snapshot(position, fill.price);
+        // A trade fill changes the position, but it must not replace the latest fair mark.
+        this.lastAccountSnapshot = this.margin.snapshot(position, this.lastMarkPrice ?? fill.price);
         this.logger(formatAccount(this.lastAccountSnapshot));
         await this.persist();
       })
@@ -175,16 +179,16 @@ export class PerpBot {
       symbol: position.symbol,
       side,
       qty: position.qty,
-      price: tick.price,
+      price: tick.markPrice,
       fee: 0,
       ts: tick.ts
     } as const;
     this.logger(
-      `[LIQUIDATION] side=${side} qty=${position.qty} mark=${tick.price} equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
+      `[LIQUIDATION] side=${side} qty=${position.qty} mark=${tick.markPrice} equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
     );
     const closedPosition = this.positions.applyFill(fill);
     this.logger(formatPosition(closedPosition));
-    this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.price);
+    this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.markPrice);
     this.logger(formatAccount(this.lastAccountSnapshot));
     this.halted = true;
     await this.persist();
@@ -210,6 +214,7 @@ export class PerpBot {
     this.halted = checkpoint.halted;
     this.recoveryRequired = this.orderTracker.getOpenOrders().length > 0;
     if (checkpoint.lastMarkPrice !== null) {
+      this.lastMarkPrice = checkpoint.lastMarkPrice;
       this.lastAccountSnapshot = this.margin.snapshot(this.positions.get(), checkpoint.lastMarkPrice);
     }
     this.logger(
@@ -235,6 +240,18 @@ export class PerpBot {
       halted: this.halted,
       lastMarkPrice: this.lastAccountSnapshot?.markPrice ?? null
     };
+  }
+}
+
+function validateTickPrices(tick: Tick): void {
+  for (const [name, price] of [
+    ["lastPrice", tick.lastPrice],
+    ["markPrice", tick.markPrice],
+    ["indexPrice", tick.indexPrice]
+  ] as const) {
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`${name} must be positive`);
+    }
   }
 }
 

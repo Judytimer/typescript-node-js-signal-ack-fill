@@ -8,11 +8,11 @@ import type { Tick } from "../src/types.ts";
 
 test("runs signal -> risk -> ack -> delayed fill -> position update", async () => {
   const ticks: Tick[] = [
-    { seq: 1, symbol: "BTC-PERP", price: 100, ts: 1 },
-    { seq: 2, symbol: "BTC-PERP", price: 101, ts: 2 },
-    { seq: 3, symbol: "BTC-PERP", price: 102, ts: 3 },
-    { seq: 4, symbol: "BTC-PERP", price: 103, ts: 4 },
-    { seq: 5, symbol: "BTC-PERP", price: 104, ts: 5 }
+    { seq: 1, symbol: "BTC-PERP", lastPrice: 100, markPrice: 100, indexPrice: 100, ts: 1 },
+    { seq: 2, symbol: "BTC-PERP", lastPrice: 101, markPrice: 101, indexPrice: 101, ts: 2 },
+    { seq: 3, symbol: "BTC-PERP", lastPrice: 102, markPrice: 102, indexPrice: 102, ts: 3 },
+    { seq: 4, symbol: "BTC-PERP", lastPrice: 103, markPrice: 103, indexPrice: 103, ts: 4 },
+    { seq: 5, symbol: "BTC-PERP", lastPrice: 104, markPrice: 104, indexPrice: 104, ts: 5 }
   ];
 
   const logs: string[] = [];
@@ -53,7 +53,7 @@ test("uses pending orders as projected position while fills are delayed", async 
   });
 
   for (const [index, price] of [100, 101, 102, 103, 104, 105].entries()) {
-    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await bot.onTick(tick(index + 1, price));
   }
 
   await bot.waitForIdle();
@@ -83,7 +83,7 @@ test("matches out-of-order fills to pending orders by orderId", async () => {
   });
 
   for (const [index, price] of [100, 101, 102, 103, 80].entries()) {
-    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await bot.onTick(tick(index + 1, price));
   }
 
   await bot.waitForIdle();
@@ -113,11 +113,11 @@ test("keeps remaining exposure pending until all partial fills complete", async 
   });
 
   for (const [index, price] of [100, 101, 102, 103].entries()) {
-    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await bot.onTick(tick(index + 1, price));
   }
   await sleep(10);
-  await bot.onTick({ seq: 5, symbol: "BTC-PERP", price: 104, ts: 5 });
-  await bot.onTick({ seq: 6, symbol: "BTC-PERP", price: 105, ts: 6 });
+  await bot.onTick(tick(5, 104));
+  await bot.onTick(tick(6, 105));
   await bot.waitForIdle();
 
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 1);
@@ -142,12 +142,12 @@ test("liquidates an under-margined position at mark and halts new strategy order
   });
 
   for (const [index, price] of [100, 101, 102, 103].entries()) {
-    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await bot.onTick(tick(index + 1, price));
   }
   await bot.waitForIdle();
 
-  await bot.onTick({ seq: 5, symbol: "BTC-PERP", price: 90, ts: 5 });
-  await bot.onTick({ seq: 6, symbol: "BTC-PERP", price: 110, ts: 6 });
+  await bot.onTick(tick(5, 110, 90, 100));
+  await bot.onTick(tick(6, 110));
 
   assert.equal(bot.getPosition().side, "FLAT");
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 1);
@@ -169,7 +169,7 @@ test("blocks an order when initial margin exceeds marked equity", async () => {
   });
 
   for (const [index, price] of [100, 101, 102, 103].entries()) {
-    await bot.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await bot.onTick(tick(index + 1, price));
   }
 
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
@@ -190,7 +190,7 @@ test("restores a filled position and continues monotonic exchange order ids", as
   } as const;
   const first = await PerpBot.create(config);
   for (const [index, price] of [100, 101, 102, 103].entries()) {
-    await first.onTick({ seq: index + 1, symbol: "BTC-PERP", price, ts: index + 1 });
+    await first.onTick(tick(index + 1, price));
   }
   await first.waitForIdle();
 
@@ -200,7 +200,7 @@ test("restores a filled position and continues monotonic exchange order ids", as
   assert.equal(restored.isRecoveryRequired(), false);
 
   for (const [index, price] of [103, 102, 101, 100].entries()) {
-    await restored.onTick({ seq: index + 5, symbol: "BTC-PERP", price, ts: index + 5 });
+    await restored.onTick(tick(index + 5, price));
   }
   await restored.waitForIdle();
 
@@ -223,10 +223,31 @@ test("halts on restart when the checkpoint contains an unresolved order", async 
   });
 
   assert.equal(bot.isRecoveryRequired(), true);
-  await bot.onTick({ seq: 10, symbol: "BTC-PERP", price: 110, ts: 10 });
+  await bot.onTick(tick(10, 110));
 
   assert.match(logs.join("\n"), /\[RECOVERY\] blocked openOrders=1/);
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
+});
+
+test("keeps the latest mark when a delayed fill arrives at the last trade price", async () => {
+  const bot = new PerpBot({
+    symbol: "BTC-PERP",
+    shortWindow: 2,
+    longWindow: 4,
+    orderQty: 0.01,
+    maxAbsPosition: 0.03,
+    fillDelayMs: 20,
+    logger: () => {}
+  });
+
+  for (const [index, price] of [100, 101, 102, 103].entries()) {
+    await bot.onTick(tick(index + 1, price));
+  }
+  await bot.onTick(tick(5, 104, 95, 97));
+  await bot.waitForIdle();
+
+  assert.equal(bot.getAccountSnapshot()?.markPrice, 95);
+  assert.equal(bot.getPosition().entryPrice, 103);
 });
 
 class MemoryStateStore implements BotStateStore {
@@ -273,4 +294,8 @@ function unresolvedCheckpoint(): BotCheckpoint {
     halted: false,
     lastMarkPrice: 100
   };
+}
+
+function tick(seq: number, lastPrice: number, markPrice = lastPrice, indexPrice = markPrice): Tick {
+  return { seq, symbol: "BTC-PERP", lastPrice, markPrice, indexPrice, ts: seq };
 }

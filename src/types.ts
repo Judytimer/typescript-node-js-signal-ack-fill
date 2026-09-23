@@ -5,7 +5,12 @@ export type SignalAction = "HOLD" | "LONG" | "SHORT";
 export type Tick = {
   seq: number;
   symbol: string;
-  price: number;
+  /** Most recent trade price; strategy signals and simulated limit orders use this. */
+  lastPrice: number;
+  /** Fair price used for unrealized PnL, margin, and liquidation checks. */
+  markPrice: number;
+  /** External spot-basket reference price; recorded but not traded directly. */
+  indexPrice: number;
   ts: number;
 };
 
