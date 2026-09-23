@@ -1,14 +1,22 @@
 import { round } from "./math.ts";
-import type { Fill, Position, PositionSide } from "./types.ts";
+import type { Fill, FundingSettlement, Position, PositionSide } from "./types.ts";
 
 export type PositionBookState = {
   position: Position;
   processedFillIds: string[];
+  processedFundingIds?: string[];
+};
+
+export type FundingResult = {
+  accepted: boolean;
+  payment: number;
+  position: Position;
 };
 
 export class PositionBook {
   private position: Position;
   private readonly processedFillIds = new Set<string>();
+  private readonly processedFundingIds = new Set<string>();
 
   constructor(symbol: string) {
     this.position = {
@@ -30,13 +38,17 @@ export class PositionBook {
     for (const fillId of state.processedFillIds) {
       book.processedFillIds.add(fillId);
     }
+    for (const fundingId of state.processedFundingIds ?? []) {
+      book.processedFundingIds.add(fundingId);
+    }
     return book;
   }
 
   exportState(): PositionBookState {
     return {
       position: this.get(),
-      processedFillIds: [...this.processedFillIds]
+      processedFillIds: [...this.processedFillIds],
+      processedFundingIds: [...this.processedFundingIds]
     };
   }
 
@@ -78,6 +90,33 @@ export class PositionBook {
     this.processedFillIds.add(fill.fillId);
 
     return this.get();
+  }
+
+  applyFunding(settlement: FundingSettlement): FundingResult {
+    if (settlement.symbol !== this.position.symbol) {
+      throw new Error(`funding symbol ${settlement.symbol} does not match ${this.position.symbol}`);
+    }
+    if (
+      settlement.fundingId.length === 0 ||
+      !Number.isFinite(settlement.rate) ||
+      !Number.isFinite(settlement.markPrice) ||
+      settlement.markPrice <= 0 ||
+      !Number.isFinite(settlement.ts)
+    ) {
+      throw new Error("invalid funding settlement");
+    }
+    if (this.processedFundingIds.has(settlement.fundingId)) {
+      return { accepted: false, payment: 0, position: this.get() };
+    }
+
+    // Positive rates transfer value from longs to shorts; negative rates reverse it.
+    const payment = round(-toSignedQty(this.position) * settlement.markPrice * settlement.rate);
+    this.position = {
+      ...this.position,
+      realizedPnl: round(this.position.realizedPnl + payment)
+    };
+    this.processedFundingIds.add(settlement.fundingId);
+    return { accepted: true, payment, position: this.get() };
   }
 }
 

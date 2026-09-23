@@ -64,6 +64,32 @@ test("restores position and processed fill ids without applying a duplicate agai
   assert.deepEqual(restored.exportState(), original.exportState());
 });
 
+test("funding debits longs, credits shorts, and is idempotent", () => {
+  const long = new PositionBook("BTC-PERP");
+  long.applyFill(fill("LONG", "BUY", 1));
+  const settlement = {
+    fundingId: "BTC-1000",
+    symbol: "BTC-PERP",
+    rate: 0.001,
+    markPrice: 110,
+    ts: 1_000
+  };
+
+  assert.equal(long.applyFunding(settlement).payment, -0.11);
+  assert.deepEqual(long.applyFunding(settlement), {
+    accepted: false,
+    payment: 0,
+    position: long.get()
+  });
+
+  const restored = PositionBook.fromState(long.exportState());
+  assert.equal(restored.applyFunding(settlement).accepted, false);
+
+  const short = new PositionBook("BTC-PERP");
+  short.applyFill(fill("SHORT", "SELL", 1));
+  assert.equal(short.applyFunding({ ...settlement, fundingId: "BTC-2000" }).payment, 0.11);
+});
+
 function fill(orderId: string, side: Fill["side"], qty: number): Fill {
   return {
     fillId: `${orderId}-FILL-1`,

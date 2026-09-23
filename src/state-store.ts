@@ -88,6 +88,9 @@ function isPositionState(value: unknown): boolean {
   if (!isRecord(value) || !isRecord(value.position) || !isStringArray(value.processedFillIds)) {
     return false;
   }
+  if (value.processedFundingIds !== undefined && !isStringArray(value.processedFundingIds)) {
+    return false;
+  }
   const position = value.position;
   return (
     typeof position.symbol === "string" &&

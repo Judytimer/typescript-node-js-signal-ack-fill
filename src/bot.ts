@@ -4,6 +4,7 @@ import {
   formatAck,
   formatAccount,
   formatFill,
+  formatFunding,
   formatOrderState,
   formatPosition,
   formatRisk,
@@ -18,8 +19,9 @@ import { MovingAverageSignal } from "./strategy.ts";
 import { round } from "./math.ts";
 import { IsolatedMarginAccount } from "./margin.ts";
 import type { MarginConfig, MarginSnapshot } from "./margin.ts";
-import type { Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
+import type { FundingSettlement, Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
 import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
+import { PaperLiquidationExecutor } from "./liquidation.ts";
 
 export type BotConfig = {
   symbol: string;
@@ -43,7 +45,9 @@ export class PerpBot {
   private readonly pendingFills: Promise<void>[] = [];
   private orderTracker = new InFlightOrderTracker();
   private readonly margin: IsolatedMarginAccount;
+  private readonly liquidationExecutor = new PaperLiquidationExecutor();
   private lastAccountSnapshot: MarginSnapshot | null = null;
+  private lastMarkPrice: number | null = null;
   private halted = false;
   private recoveryRequired = false;
   private readonly stateStore?: BotStateStore;
@@ -71,10 +75,12 @@ export class PerpBot {
   }
 
   async onTick(tick: Tick): Promise<void> {
+    validateTickPrices(tick);
     this.logger(formatTick(tick));
 
     const markedPosition = this.positions.get();
-    this.lastAccountSnapshot = this.margin.snapshot(markedPosition, tick.price);
+    this.lastMarkPrice = tick.markPrice;
+    this.lastAccountSnapshot = this.margin.snapshot(markedPosition, tick.markPrice);
     this.logger(formatAccount(this.lastAccountSnapshot));
 
     if (this.recoveryRequired) {
@@ -111,7 +117,7 @@ export class PerpBot {
     }
 
     const postOrderPosition = projectOrder(projectedPosition, decision.order);
-    const postOrderAccount = this.margin.snapshot(postOrderPosition, tick.price);
+    const postOrderAccount = this.margin.snapshot(postOrderPosition, tick.markPrice);
     if (postOrderAccount.initialMargin > this.lastAccountSnapshot.equity) {
       this.logger(
         `[MARGIN_RISK] blocked requiredInitialMargin=${postOrderAccount.initialMargin} equity=${this.lastAccountSnapshot.equity}`
@@ -137,7 +143,8 @@ export class PerpBot {
         }
         const position = this.positions.applyFill(fill);
         this.logger(formatPosition(position));
-        this.lastAccountSnapshot = this.margin.snapshot(position, fill.price);
+        // A trade fill changes the position, but it does not own the market mark.
+        this.lastAccountSnapshot = this.margin.snapshot(position, this.requireLatestMarkPrice());
         this.logger(formatAccount(this.lastAccountSnapshot));
         await this.persist();
       })
@@ -149,6 +156,22 @@ export class PerpBot {
   async waitForIdle(): Promise<void> {
     await Promise.all(this.pendingFills);
     await this.persistTail;
+  }
+
+  async onFunding(settlement: FundingSettlement): Promise<void> {
+    const latestMarkPrice = this.requireLatestMarkPrice();
+    const result = this.positions.applyFunding(settlement);
+    if (!result.accepted) {
+      this.logger(`[FUNDING] fundingId=${settlement.fundingId} ignored=duplicate`);
+      return;
+    }
+
+    this.logger(formatFunding(settlement, result.payment));
+    // Funding changes realized equity, but a funding event does not own the live market mark.
+    this.lastAccountSnapshot = this.margin.snapshot(result.position, latestMarkPrice);
+    this.logger(formatPosition(result.position));
+    this.logger(formatAccount(this.lastAccountSnapshot));
+    await this.persist();
   }
 
   getPosition(): Position {
@@ -168,26 +191,23 @@ export class PerpBot {
       this.logger(formatOrderState(canceled));
     }
 
-    const side = position.side === "LONG" ? "SELL" : "BUY";
-    const fill = {
-      fillId: `LIQ-${tick.seq}-FILL-1`,
-      orderId: `LIQ-${tick.seq}`,
-      symbol: position.symbol,
-      side,
-      qty: position.qty,
-      price: tick.price,
-      fee: 0,
-      ts: tick.ts
-    } as const;
+    const execution = this.liquidationExecutor.execute(position, tick);
     this.logger(
-      `[LIQUIDATION] side=${side} qty=${position.qty} mark=${tick.price} equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
+      `[LIQUIDATION] side=${execution.fill.side} qty=${position.qty} triggerMark=${execution.triggerMarkPrice} executionPrice=${execution.executionPrice} assumption=EXECUTION_AT_MARK equity=${snapshot.equity} maintenanceMargin=${snapshot.maintenanceMargin}`
     );
-    const closedPosition = this.positions.applyFill(fill);
+    const closedPosition = this.positions.applyFill(execution.fill);
     this.logger(formatPosition(closedPosition));
-    this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.price);
+    this.lastAccountSnapshot = this.margin.snapshot(closedPosition, tick.markPrice);
     this.logger(formatAccount(this.lastAccountSnapshot));
     this.halted = true;
     await this.persist();
+  }
+
+  private requireLatestMarkPrice(): number {
+    if (this.lastMarkPrice === null) {
+      throw new Error("invariant violation: cannot value a fill without a latest mark price");
+    }
+    return this.lastMarkPrice;
   }
 
   private async restore(): Promise<void> {
@@ -210,6 +230,7 @@ export class PerpBot {
     this.halted = checkpoint.halted;
     this.recoveryRequired = this.orderTracker.getOpenOrders().length > 0;
     if (checkpoint.lastMarkPrice !== null) {
+      this.lastMarkPrice = checkpoint.lastMarkPrice;
       this.lastAccountSnapshot = this.margin.snapshot(this.positions.get(), checkpoint.lastMarkPrice);
     }
     this.logger(
@@ -235,6 +256,18 @@ export class PerpBot {
       halted: this.halted,
       lastMarkPrice: this.lastAccountSnapshot?.markPrice ?? null
     };
+  }
+}
+
+function validateTickPrices(tick: Tick): void {
+  for (const [name, price] of [
+    ["lastPrice", tick.lastPrice],
+    ["markPrice", tick.markPrice],
+    ["indexPrice", tick.indexPrice]
+  ] as const) {
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`${name} must be positive`);
+    }
   }
 }
 

@@ -1,9 +1,9 @@
-import type { Fill, OrderAck, Position, RiskDecision, Signal, Tick } from "./types.ts";
+import type { Fill, FundingSettlement, OrderAck, Position, RiskDecision, Signal, Tick } from "./types.ts";
 import type { InFlightOrder } from "./order-tracker.ts";
 import type { MarginSnapshot } from "./margin.ts";
 
 export function formatTick(tick: Tick): string {
-  return `[TICK] seq=${tick.seq} symbol=${tick.symbol} price=${tick.price}`;
+  return `[TICK] seq=${tick.seq} symbol=${tick.symbol} last=${tick.lastPrice} mark=${tick.markPrice} index=${tick.indexPrice}`;
 }
 
 export function formatSignal(signal: Signal): string {
@@ -28,6 +28,10 @@ export function formatFill(fill: Fill): string {
   return `[FILL] fillId=${fill.fillId} orderId=${fill.orderId} side=${fill.side} qty=${fill.qty} price=${fill.price} fee=${fill.fee.toFixed(
     4
   )}`;
+}
+
+export function formatFunding(settlement: FundingSettlement, payment: number): string {
+  return `[FUNDING] fundingId=${settlement.fundingId} rate=${settlement.rate} settlementMark=${settlement.markPrice} payment=${payment} ts=${settlement.ts}`;
 }
 
 export function formatOrderState(order: InFlightOrder): string {

@@ -5,7 +5,7 @@ import { RiskManager } from "../src/risk.ts";
 import type { Position, SignalAction } from "../src/types.ts";
 
 const risk = new RiskManager({ orderQty: 0.01, maxAbsPosition: 0.03 });
-const tick = { seq: 1, symbol: "BTC-PERP", price: 100, ts: 1 };
+const tick = { seq: 1, symbol: "BTC-PERP", lastPrice: 100, markPrice: 100, indexPrice: 100, ts: 1 };
 
 function evaluate(action: SignalAction, position: Position) {
   return risk.evaluate(
@@ -21,6 +21,7 @@ test("LONG 0.02 -> target SHORT 0.01 requires SELL 0.03", () => {
   if (decision.approved) {
     assert.equal(decision.order.side, "SELL");
     assert.equal(decision.order.qty, 0.03);
+    assert.equal(decision.order.price, tick.lastPrice);
   }
 });
 
