@@ -1,5 +1,7 @@
 # F06 Decision Memo｜PerpBot 收回到“交易所客户端”边界
 
+> **SUPERSEDED FOR S1（2026-09-24）**：后续审查确认旧 F06 是 Ghost Cancel：cancel intent 从未送达 `SimulatedExchange`，本地 tracker 却直接伪造 `CANCELED`。因此 Stage 1.5 先修 cancel ownership；本 Memo 中关于真正 late-arrival Fill 的 A/B/C 判断保留给 Stage 2，不能用于把 S1 的未执行 Fill 强行记入 Position。
+
 日期：2026-09-24  
 状态：Decision only；本轮不修改生产代码、状态机或测试预期。
 

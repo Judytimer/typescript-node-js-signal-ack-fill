@@ -16,7 +16,7 @@ simulateMarket
 
 风控使用 `已成交 Position + 已 ACK 未 Fill 的 Pending Orders` 计算预计仓位，避免 Fill 延迟期间重复下单。Pending 以 `orderId` 关联，因此模拟 Fill 乱序时仍能删除正确的在途订单。
 
-订单生命周期由 `InFlightOrderTracker` 持有：`ACKED -> PARTIALLY_FILLED -> FILLED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
+订单生命周期由 `InFlightOrderTracker` 持有：成交路径为 `ACKED -> PARTIALLY_FILLED -> FILLED`；撤单路径为 `ACKED/PARTIALLY_FILLED -> CANCEL_REQUESTED -> CANCELED`。只有 `SimulatedExchange` 返回 `CancelAck` 后 tracker 才能确认 `CANCELED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
 
 第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平触发只使用 mark，index 目前仅代表外部参考输入；本模拟器没有实现交易所级 mark-price 推导。强平触发与执行已分开建模，但当前 paper simplification 仍假设 `liquidation execution price = mark price`，日志会同时记录 trigger mark 与 execution price。下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
 

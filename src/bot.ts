@@ -3,6 +3,7 @@ import type { FillDelay, FillPlanStep } from "./exchange.ts";
 import {
   formatAck,
   formatAccount,
+  formatCancelAck,
   formatFill,
   formatFunding,
   formatOrderState,
@@ -135,6 +136,9 @@ export class PerpBot {
 
     const fillTasks = submitted.fills.map((fillPromise) =>
       fillPromise.then(async (fill) => {
+        if (fill === null) {
+          return;
+        }
         this.logger(formatFill(fill));
         const result = this.orderTracker.processFill(fill);
         this.logger(formatOrderState(result.order));
@@ -187,7 +191,11 @@ export class PerpBot {
   }
 
   private async liquidate(position: Position, tick: Tick, snapshot: MarginSnapshot): Promise<void> {
-    for (const canceled of this.orderTracker.cancelOpenOrders()) {
+    for (const cancelRequested of this.orderTracker.requestCancelOpenOrders()) {
+      this.logger(formatOrderState(cancelRequested));
+      const cancelAck = await this.exchange.requestCancel(cancelRequested.orderId);
+      this.logger(formatCancelAck(cancelAck));
+      const canceled = this.orderTracker.processCancelAck(cancelAck);
       this.logger(formatOrderState(canceled));
     }
 

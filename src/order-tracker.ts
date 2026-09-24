@@ -1,7 +1,12 @@
 import { round } from "./math.ts";
-import type { Fill, OrderAck, OrderSide } from "./types.ts";
+import type { CancelAck, Fill, OrderAck, OrderSide } from "./types.ts";
 
-export type InFlightOrderStatus = "ACKED" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED";
+export type InFlightOrderStatus =
+  | "ACKED"
+  | "PARTIALLY_FILLED"
+  | "CANCEL_REQUESTED"
+  | "FILLED"
+  | "CANCELED";
 
 export type InFlightOrder = {
   orderId: string;
@@ -114,15 +119,28 @@ export class InFlightOrderTracker {
     return { accepted: true, order: { ...tracked.order } };
   }
 
-  cancelOpenOrders(): InFlightOrder[] {
-    const canceled: InFlightOrder[] = [];
+  requestCancelOpenOrders(): InFlightOrder[] {
+    const requested: InFlightOrder[] = [];
     for (const tracked of this.orders.values()) {
       if (tracked.order.status === "ACKED" || tracked.order.status === "PARTIALLY_FILLED") {
-        tracked.order = { ...tracked.order, status: "CANCELED" };
-        canceled.push({ ...tracked.order });
+        tracked.order = { ...tracked.order, status: "CANCEL_REQUESTED" };
+        requested.push({ ...tracked.order });
       }
     }
-    return canceled;
+    return requested;
+  }
+
+  processCancelAck(ack: CancelAck): InFlightOrder {
+    const tracked = this.orders.get(ack.orderId);
+    if (tracked === undefined) {
+      throw new Error(`cancel acknowledgment belongs to unknown order ${ack.orderId}`);
+    }
+    if (tracked.order.status !== "CANCEL_REQUESTED") {
+      throw new Error(`order ${ack.orderId} is not awaiting cancel confirmation`);
+    }
+
+    tracked.order = { ...tracked.order, status: "CANCELED" };
+    return { ...tracked.order };
   }
 
   get(orderId: string): InFlightOrder | undefined {
@@ -133,7 +151,10 @@ export class InFlightOrderTracker {
   getOpenOrders(): InFlightOrder[] {
     return [...this.orders.values()]
       .filter(
-        (tracked) => tracked.order.status === "ACKED" || tracked.order.status === "PARTIALLY_FILLED"
+        (tracked) =>
+          tracked.order.status === "ACKED" ||
+          tracked.order.status === "PARTIALLY_FILLED" ||
+          tracked.order.status === "CANCEL_REQUESTED"
       )
       .map((tracked) => ({ ...tracked.order }));
   }

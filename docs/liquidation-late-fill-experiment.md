@@ -1,8 +1,10 @@
 # Liquidation × Late Fill：复现实验
 
+> **SUPERSEDED（2026-09-24）**：本实验复现的是 S1 Ghost Cancel，不是真正的 late-arrival Fill。旧实现只在本地写入 `CANCELED`，cancel intent 从未到达 `SimulatedExchange`。Stage 1.5 已改为 `CANCEL_REQUESTED → exchange CancelAck → CANCELED`，并由 venue-side cancel 阻止尚未执行的 Fill。真正的 `executedAt < cancelEffectiveAt` 且 Fill 较晚送达的 S2 留待下一轮。
+
 ## Scope
 
-本轮只复现事故，不修改订单或持仓处理规则。
+以下内容保留为 fail-before characterization，不再代表当前行为。
 
 ## Deterministic event order
 
@@ -40,3 +42,20 @@ SIM-1 BUY fill
 当前实现把本地取消状态当成拒绝后续 Fill 的充分条件。如果这个 late Fill 代表交易所已经发生且随后才送达的成交事实，系统会漏记真实 exposure，并错误地保持 `FLAT`。
 
 本实验不决定 late Fill 应被接受还是拒绝。下一步必须先明确 Cancel ACK、撮合时间与事件到达时间的语义，再决定状态机和 reconciliation 规则。
+
+## Stage 1.5 replacement evidence
+
+当前 deterministic test 为 `exchange-confirmed cancel prevents the ghost fill after liquidation`：
+
+```text
+SIM-2 ACK
+→ local CANCEL_REQUESTED
+→ SimulatedExchange.requestCancel(SIM-2)
+→ authoritative CancelAck
+→ local CANCELED
+→ liquidation continues
+→ scheduled SIM-2 timer observes venue CANCELED
+→ no SIM-2 Fill is produced
+```
+
+Partial Fill 场景另外证明：已执行的 `filledQty=0.004` 保留，CancelAck 只取消 `remainingQty=0.006`，不会抹掉已成交部分。

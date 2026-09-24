@@ -117,7 +117,9 @@ function isOrderTrackerState(value: unknown): boolean {
       isNonNegativeNumber(order.originalQty) &&
       isNonNegativeNumber(order.filledQty) &&
       isNonNegativeNumber(order.remainingQty) &&
-      ["ACKED", "PARTIALLY_FILLED", "FILLED", "CANCELED"].includes(String(order.status))
+      ["ACKED", "PARTIALLY_FILLED", "CANCEL_REQUESTED", "FILLED", "CANCELED"].includes(
+        String(order.status)
+      )
     );
   });
 }

@@ -1,4 +1,13 @@
-import type { Fill, FundingSettlement, OrderAck, Position, RiskDecision, Signal, Tick } from "./types.ts";
+import type {
+  CancelAck,
+  Fill,
+  FundingSettlement,
+  OrderAck,
+  Position,
+  RiskDecision,
+  Signal,
+  Tick
+} from "./types.ts";
 import type { InFlightOrder } from "./order-tracker.ts";
 import type { MarginSnapshot } from "./margin.ts";
 
@@ -22,6 +31,10 @@ export function formatRisk(decision: RiskDecision): string {
 
 export function formatAck(ack: OrderAck): string {
   return `[ACK] orderId=${ack.orderId} side=${ack.request.side} qty=${ack.request.qty} price=${ack.request.price}`;
+}
+
+export function formatCancelAck(ack: CancelAck): string {
+  return `[CANCEL_ACK] orderId=${ack.orderId} status=${ack.status} ts=${ack.ts}`;
 }
 
 export function formatFill(fill: Fill): string {

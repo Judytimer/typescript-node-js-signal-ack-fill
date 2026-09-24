@@ -1,9 +1,9 @@
 import { round } from "./math.ts";
-import type { Fill, OrderAck, OrderRequest } from "./types.ts";
+import type { CancelAck, Fill, OrderAck, OrderRequest } from "./types.ts";
 
 export type SubmittedOrder = {
   ack: OrderAck;
-  fills: Promise<Fill>[];
+  fills: Promise<Fill | null>[];
 };
 
 export type FillDelay = number | ((orderId: string, order: OrderRequest) => number);
@@ -14,6 +14,10 @@ export type FillPlanStep = {
 
 export class SimulatedExchange {
   private nextOrderId = 1;
+  private readonly orders = new Map<
+    string,
+    { request: OrderRequest; executedQty: number; status: "OPEN" | "CANCELED" | "FILLED" }
+  >();
   private readonly fillDelayMs: FillDelay;
   private readonly feeRate: number;
   private readonly fillPlan?: readonly FillPlanStep[];
@@ -38,6 +42,7 @@ export class SimulatedExchange {
 
   submit(order: OrderRequest): SubmittedOrder {
     const orderId = `SIM-${this.nextOrderId++}`;
+    this.orders.set(orderId, { request: order, executedQty: 0, status: "OPEN" });
     const ack: OrderAck = {
       orderId,
       status: "ACKED",
@@ -58,8 +63,21 @@ export class SimulatedExchange {
           : round(order.qty * step.fraction);
       allocatedQty = round(allocatedQty + qty);
 
-      return new Promise<Fill>((resolve) => {
+      return new Promise<Fill | null>((resolve) => {
         setTimeout(() => {
+          const venueOrder = this.orders.get(orderId);
+          if (venueOrder === undefined) {
+            throw new Error(`missing simulated order ${orderId}`);
+          }
+          if (venueOrder.status === "CANCELED") {
+            resolve(null);
+            return;
+          }
+
+          venueOrder.executedQty = round(venueOrder.executedQty + qty);
+          if (venueOrder.executedQty === order.qty) {
+            venueOrder.status = "FILLED";
+          }
           resolve({
             fillId: `${orderId}-FILL-${index + 1}`,
             orderId,
@@ -75,6 +93,19 @@ export class SimulatedExchange {
     });
 
     return { ack, fills };
+  }
+
+  async requestCancel(orderId: string): Promise<CancelAck> {
+    const order = this.orders.get(orderId);
+    if (order === undefined) {
+      throw new Error(`cannot cancel unknown order ${orderId}`);
+    }
+    if (order.status !== "OPEN") {
+      throw new Error(`cannot cancel ${order.status.toLowerCase()} order ${orderId}`);
+    }
+
+    order.status = "CANCELED";
+    return { orderId, status: "CANCELED", ts: Date.now() };
   }
 }
 

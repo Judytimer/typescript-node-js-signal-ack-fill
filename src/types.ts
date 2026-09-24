@@ -37,6 +37,12 @@ export type OrderAck = {
   ts: number;
 };
 
+export type CancelAck = {
+  orderId: string;
+  status: "CANCELED";
+  ts: number;
+};
+
 export type Fill = {
   fillId: string;
   orderId: string;

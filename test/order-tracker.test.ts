@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { InFlightOrderTracker } from "../src/order-tracker.ts";
-import type { Fill, OrderAck } from "../src/types.ts";
+import type { CancelAck, Fill, OrderAck } from "../src/types.ts";
 
 test("tracks partial fills, remaining quantity, terminal state, and duplicate fill ids", () => {
   const tracker = new InFlightOrderTracker();
@@ -46,20 +46,24 @@ test("tracks partial fills, remaining quantity, terminal state, and duplicate fi
   assert.equal(tracker.getOpenOrders().length, 0);
 });
 
-test("cancels open orders and rejects fills arriving after cancellation", () => {
+test("only reaches CANCELED after an exchange cancel acknowledgment", () => {
   const tracker = new InFlightOrderTracker();
   tracker.trackAck(ack("SIM-2", "BUY", 0.01));
 
-  assert.deepEqual(tracker.cancelOpenOrders(), [
+  assert.deepEqual(tracker.requestCancelOpenOrders(), [
     {
       orderId: "SIM-2",
       side: "BUY",
       originalQty: 0.01,
       filledQty: 0,
       remainingQty: 0.01,
-      status: "CANCELED"
+      status: "CANCEL_REQUESTED"
     }
   ]);
+  assert.equal(tracker.getOpenOrders().length, 1);
+
+  tracker.processCancelAck(cancelAck("SIM-2"));
+  assert.equal(tracker.get("SIM-2")?.status, "CANCELED");
   assert.equal(tracker.getOpenOrders().length, 0);
   assert.equal(tracker.processFill(fill("SIM-2-FILL-1", "SIM-2", "BUY", 0.01)).accepted, false);
 });
@@ -89,6 +93,10 @@ function ack(orderId = "SIM-1", side: Fill["side"] = "BUY", qty = 0.01): OrderAc
     },
     ts: 1
   };
+}
+
+function cancelAck(orderId: string): CancelAck {
+  return { orderId, status: "CANCELED", ts: 2 };
 }
 
 function fill(

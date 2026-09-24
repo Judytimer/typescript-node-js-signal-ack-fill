@@ -158,7 +158,7 @@ test("liquidates an under-margined position at mark and halts new strategy order
   assert.match(logs.join("\n"), /halted after liquidation/);
 });
 
-test("documents current cancel-then-late-fill behavior after liquidation", async () => {
+test("exchange-confirmed cancel prevents the ghost fill after liquidation", async () => {
   const logs: string[] = [];
   const bot = new PerpBot({
     symbol: "BTC-PERP",
@@ -187,11 +187,11 @@ test("documents current cancel-then-late-fill behavior after liquidation", async
   await bot.onTick(tick(5, 80, 103, 100));
   assert.match(logs.join("\n"), /\[ACK\] orderId=SIM-2 side=SELL qty=0\.02/);
 
-  // A later mark triggers liquidation and locally cancels the ACKED reversal.
+  // A later mark triggers a cancel intent which the exchange confirms before liquidation proceeds.
   await bot.onTick(tick(6, 80, 90, 95));
   assert.equal(bot.getPosition().side, "FLAT");
 
-  // The already scheduled exchange fill still arrives after local cancellation.
+  // The venue-side cancel suppresses the still-unexecuted scheduled fill.
   await bot.waitForIdle();
   const trace = logs.filter(
     (line) =>
@@ -200,19 +200,21 @@ test("documents current cancel-then-late-fill behavior after liquidation", async
       line.startsWith("[POSITION]")
   );
   const ackIndex = trace.findIndex((line) => line.startsWith("[ACK] orderId=SIM-2"));
+  const cancelRequestedIndex = trace.findIndex(
+    (line) => line.startsWith("[ORDER] orderId=SIM-2 status=CANCEL_REQUESTED")
+  );
+  const cancelAckIndex = trace.findIndex((line) => line.startsWith("[CANCEL_ACK] orderId=SIM-2"));
   const canceledIndex = trace.findIndex(
     (line) => line.startsWith("[ORDER] orderId=SIM-2 status=CANCELED")
   );
   const liquidationIndex = trace.findIndex((line) => line.startsWith("[LIQUIDATION]"));
   const lateFillIndex = trace.findIndex((line) => line.startsWith("[FILL]") && line.includes("SIM-2"));
 
-  assert.ok(ackIndex < canceledIndex);
+  assert.ok(ackIndex < cancelRequestedIndex);
+  assert.ok(cancelRequestedIndex < cancelAckIndex);
+  assert.ok(cancelAckIndex < canceledIndex);
   assert.ok(canceledIndex < liquidationIndex);
-  assert.ok(liquidationIndex < lateFillIndex);
-  assert.match(trace[lateFillIndex + 1] ?? "", /status=CANCELED/);
-
-  // Observation only: the tracker rejects the late fill, so Position stays FLAT.
-  // Whether an exchange-reported fill may be discarded is intentionally unresolved.
+  assert.equal(lateFillIndex, -1);
   assert.equal(bot.getPosition().side, "FLAT");
 });
 
