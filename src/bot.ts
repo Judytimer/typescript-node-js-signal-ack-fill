@@ -23,6 +23,8 @@ import type { MarginConfig, MarginSnapshot } from "./margin.ts";
 import type { FundingSettlement, Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
 import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
 import { PaperLiquidationExecutor } from "./liquidation.ts";
+import { reconcileState } from "./reconciliation.ts";
+import type { ExchangeStateSnapshot, ReconciliationReport } from "./reconciliation.ts";
 
 export type BotConfig = {
   symbol: string;
@@ -188,6 +190,10 @@ export class PerpBot {
 
   isRecoveryRequired(): boolean {
     return this.recoveryRequired;
+  }
+
+  reconcile(exchange: ExchangeStateSnapshot): ReconciliationReport {
+    return reconcileState(this.positions.get(), this.orderTracker.getOpenOrders(), exchange);
   }
 
   private async liquidate(position: Position, tick: Tick, snapshot: MarginSnapshot): Promise<void> {

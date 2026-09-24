@@ -22,6 +22,8 @@ simulateMarket
 
 第三轮加入版本化 checkpoint。ACK、有效 Fill 和模拟强平后会原子写入 `.runtime/perp-bot-state.json`，保存仓位、Fill 幂等集合、订单状态和下一模拟订单编号。正常完成的状态可恢复；如果重启时仍有 unresolved order，机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
 
+Reconciliation 目前提供只读比较边界：输入本地 Position / open orders 与权威 exchange snapshot，报告 position mismatch、missing/unexpected order 和 remaining quantity mismatch。它不会自动覆盖任一侧状态；恢复策略仍保持 fail-closed。
+
 Funding 作为独立结算事件输入：事件携带 `fundingId / rate / markPrice / ts`，正费率下多仓支付、空仓收取，负费率方向相反。Funding 修改 realized equity，但无权覆盖最新 market mark；`fundingId` 会进入 checkpoint，以保证重启后的重复结算仍然幂等。当前不包含 funding alpha 或交易所费率预测。
 
 ## 运行
@@ -62,6 +64,7 @@ npm test
 - `src/order-tracker.ts`: In-flight order、累计成交、剩余数量与状态
 - `src/margin.ts`: 逐仓权益、保证金门槛与强平条件
 - `src/state-store.ts`: 版本化 checkpoint 与原子 JSON 文件存储
+- `src/reconciliation.ts`: 本地状态与 exchange snapshot 的只读一致性报告
 - `src/position.ts`: 持仓更新
 - `src/logging.ts`: 日志格式
 

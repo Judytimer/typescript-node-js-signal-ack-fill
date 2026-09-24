@@ -290,6 +290,17 @@ test("halts on restart when the checkpoint contains an unresolved order", async 
 
   assert.match(logs.join("\n"), /\[RECOVERY\] blocked openOrders=1/);
   assert.equal(logs.filter((line) => line.startsWith("[ACK]")).length, 0);
+
+  assert.deepEqual(
+    bot.reconcile({
+      position: { symbol: "BTC-PERP", side: "FLAT", qty: 0, entryPrice: 0, realizedPnl: 0 },
+      openOrders: []
+    }),
+    {
+      consistent: false,
+      issues: [{ type: "MISSING_EXCHANGE_ORDER", orderId: "SIM-1" }]
+    }
+  );
 });
 
 test("keeps the latest mark when a delayed fill arrives at the last trade price", async () => {
