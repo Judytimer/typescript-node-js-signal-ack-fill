@@ -81,6 +81,7 @@ npm test
 - `src/state-store.ts`: 版本化 checkpoint 与原子 JSON 文件存储
 - `src/reconciliation.ts`: 本地状态与 exchange snapshot 的只读一致性报告
 - `src/recovery-evidence.ts`: M2A authoritative recovery evidence contract 与 validation
+- `src/coinbase-candle-adapter.ts`: Coinbase raw candle 字段、时间与 gap 的 fail-closed adapter
 - `src/historical-replay.ts`: T0-safe Historical Replay schema 与研究记录 runner
 - `src/position.ts`: 持仓更新
 - `src/logging.ts`: 日志格式

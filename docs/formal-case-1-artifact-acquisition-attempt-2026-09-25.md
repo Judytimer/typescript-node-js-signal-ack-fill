@@ -73,3 +73,10 @@ locators, or receive user-supplied raw files together with their original
 request/publication metadata. The bytes must be checksummed before parsing.
 If either artifact cannot establish provenance, the FOMC candidate remains
 rejected rather than being downgraded into a counted sample.
+
+The Coinbase raw adapter is now ready for that response. It maps Coinbase's
+`[bucketStartSeconds, low, high, open, close, volume]` rows, converts seconds to
+milliseconds, changes bucket-start timestamps to bucket-end timestamps, sorts
+ascending, and rejects non-2xx responses, duplicates, and gaps. It has only
+been exercised with synthetic DEMO rows; no real FOMC candle was introduced or
+inspected in this environment.
