@@ -46,7 +46,7 @@ M2A 已定义 authoritative recovery evidence contract；当前仍只验证 evid
 
 每条正式记录必须具备真实 T0、归档的 T0 前 event evidence、带 interval 且 fresh 到 T0 的 vendor market data、预定义 outcome rule 和窗口结束后的可测量 outcome。`RECONSTRUCTED / MIXED` 输入不能升级为 FORMAL。当前 SEC X 案例只是方法论反例，不计入正式样本。
 
-FORMAL Case #1 已完成候选筛选：2024-03-20 FOMC statement / BTC-USD。当前结论为 `NOT ADMITTED`，因为仓库尚未保存并校验官方 event artifact 与原始 vendor candles；详见 [`formal-case-1-candidate-screen.md`](formal-case-1-candidate-screen.md)。
+FORMAL Case #1 已冻结候选选择规则：在 FOMC release 后，用未修改的 MA(3,6) 找到第一个 actionable crossover，并要求发生在 18:30 Powell press conference 前；不存在则直接淘汰。当前结论为 `NOT ADMITTED`，因为仓库尚未保存并校验官方 event artifact 与原始 vendor candles；详见 [`formal-case-1-candidate-screen.md`](formal-case-1-candidate-screen.md)。
 
 ### M4｜面试叙事与演示脚本
 
@@ -64,4 +64,4 @@ FORMAL Case #1 已完成候选筛选：2024-03-20 FOMC statement / BTC-USD。当
 
 ## 下一步
 
-下一步只为 FORMAL Case #1 获取并校验带 checksum 的官方 event artifact 与原始 vendor candles；通过 provenance、timestamp、freshness 和 crossover gate 后才实现 record。成功后再扩到 3–5 条 FORMAL records。M2 recovery mutation 继续等待 authoritative exchange evidence，不阻塞案例与面试材料整理。
+下一步只为 FORMAL Case #1 获取带 metadata/checksum 的 Fed official bytes 与原始 vendor BTC-USD 1m candles，然后执行冻结的 pre-18:30 crossover rule。无合格 crossover 就淘汰；存在时才冻结 Shadow mapping/outcome rule 并实现 record。成功后再扩到 3–5 条 FORMAL records。M2 recovery mutation 继续等待 authoritative exchange evidence，不阻塞案例与面试材料整理。
