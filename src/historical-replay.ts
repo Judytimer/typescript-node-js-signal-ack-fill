@@ -58,29 +58,50 @@ export type FrozenOutcomeHorizon = {
   candidateT0: number;
   horizonMs: number;
   endsAt: number;
-  nextIndependentCatalystAt: number | null;
+  nextIndependentCatalystAt: number;
 };
 
-/** Freezes a clean horizon which ends before the next independent catalyst. */
+export const FORMAL_OUTCOME_HORIZON_MS = 15 * 60_000;
+
+export type FrozenBaselineCandidateOutcome = FrozenOutcomeHorizon & {
+  action: "LONG" | "SHORT";
+  method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE";
+};
+
+/** Freezes the 15-minute horizon, which must end before the next catalyst. */
 export function freezeOutcomeHorizon(
   candidateT0: number,
-  horizonMs: number,
-  nextIndependentCatalystAt: number | null
+  nextIndependentCatalystAt: number
 ): FrozenOutcomeHorizon {
-  if (!Number.isFinite(candidateT0) || !Number.isFinite(horizonMs) || horizonMs <= 0) {
+  if (!Number.isFinite(candidateT0) || !Number.isFinite(nextIndependentCatalystAt)) {
     throw new Error("outcome horizon is invalid");
   }
-  const endsAt = candidateT0 + horizonMs;
+  const endsAt = candidateT0 + FORMAL_OUTCOME_HORIZON_MS;
   if (!Number.isFinite(endsAt)) {
     throw new Error("outcome horizon is invalid");
   }
-  if (
-    nextIndependentCatalystAt !== null &&
-    (!Number.isFinite(nextIndependentCatalystAt) || endsAt >= nextIndependentCatalystAt)
-  ) {
+  if (endsAt >= nextIndependentCatalystAt) {
     throw new Error("outcome horizon must end before the next independent catalyst");
   }
-  return { candidateT0, horizonMs, endsAt, nextIndependentCatalystAt };
+  return {
+    candidateT0,
+    horizonMs: FORMAL_OUTCOME_HORIZON_MS,
+    endsAt,
+    nextIndependentCatalystAt
+  };
+}
+
+/** Baseline enters at immutable T0 and holds the selected side for 15 minutes. */
+export function freezeBaselineCandidateOutcome(
+  candidateT0: number,
+  action: "LONG" | "SHORT",
+  nextIndependentCatalystAt: number
+): FrozenBaselineCandidateOutcome {
+  return {
+    ...freezeOutcomeHorizon(candidateT0, nextIndependentCatalystAt),
+    action,
+    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE"
+  };
 }
 
 /**

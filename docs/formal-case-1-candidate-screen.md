@@ -27,6 +27,7 @@ candles:
    evaluable signal before 18:00 UTC.
 3. Starting after the verified event release, find the first evaluable signal
    that changes from the previous evaluable action into `LONG` or `SHORT`.
+   `HOLD` (the Baseline's FLAT action) to `LONG`/`SHORT` is valid.
 4. The close time of that candle is Candidate T0.
 5. Candidate T0 must be strictly earlier than 18:30 UTC, before the Powell
    press conference begins.
@@ -42,18 +43,27 @@ function. Synthetic DEMO burn-in proves that it selects the first
 `SHORT -> LONG` crossover, rejects a warm-up-only first signal, and treats the
 18:30 cutoff as exclusive.
 
-## Frozen Clean-Horizon Rule
+## Frozen Baseline Candidate Outcome
 
-The exact duration `H` is frozen only after a qualifying Candidate T0 exists.
-Regardless of the chosen duration, the following rule is already fixed:
+The duration and position lifecycle are fixed now:
 
 ```text
-outcomeEnd = Candidate T0 + H
+H = 15 minutes
+entry = Candidate T0 close
+position = selected LONG or SHORT
+exit = Candidate T0 + 15 minutes close
+outcomeEnd = Candidate T0 + 15 minutes
 outcomeEnd < nextIndependentCatalystAt
 ```
 
 Equality is not clean and must be rejected. `freezeOutcomeHorizon()` enforces
-this boundary without reading prices or scoring an outcome.
+the fixed duration and catalyst boundary. `freezeBaselineCandidateOutcome()`
+records the T0-entry/15-minute-hold definition without reading prices or
+scoring an outcome.
+
+Sample limitation: this study only covers conditional samples where a
+post-event actionable crossover exists before the fixed cutoff. It does not
+estimate unconditional event performance.
 
 ## Pre-Formal Gate
 
@@ -63,7 +73,7 @@ this boundary without reading prices or scoring an outcome.
 | Archived/vendor market data | FAIL | No raw vendor BTC-USD response for the event window is currently stored in the repository. A source URL written in a fixture is not sufficient. |
 | Candle interval and T0 freshness | PENDING | Validate one-minute continuity and require the final input candle to be no more than one interval behind T0. |
 | Baseline/catalyst causal alignment | PENDING | Apply the frozen selection rule. The first actionable crossover must occur after the release and strictly before 18:30 UTC. |
-| Clean outcome horizon | READY | Pure validation requires `Candidate T0 + H` to be strictly earlier than the next independent catalyst. Exact `H` remains unfrozen until Candidate T0 exists. |
+| Baseline Candidate Outcome | READY | Enter selected side at immutable Candidate T0 and hold exactly 15 minutes; the end must be strictly earlier than the next independent catalyst. |
 | Shadow mapping and outcome rule | DEFERRED | Freeze only after a qualifying Candidate T0 exists, and before evaluating the post-T0 outcome or producing a scored record. |
 
 ## Artifact Acquisition Contract
@@ -84,11 +94,13 @@ crossover validation must still pass.
 Only after the frozen selection rule produces a qualifying Candidate T0:
 
 1. freeze the Shadow verdict-to-result mapping;
-2. freeze the measurable outcome rule and window;
-3. generate the Shadow review using only information available by Candidate
+2. freeze the concrete price-return success/failure thresholds for the already
+   fixed T0-entry/15-minute-hold outcome;
+3. freeze ABSTAIN counterfactual accounting;
+4. build the T0 evidence packet and generate the Shadow review using only information available by Candidate
    T0;
-4. evaluate the outcome afterward;
-5. construct `FORMAL / MEASURED / ARCHIVED` Case #1.
+5. reveal the future 15-minute candles and score Baseline/Shadow behavior;
+6. construct `FORMAL / MEASURED / ARCHIVED` Case #1.
 
 If no qualifying crossover exists, none of these steps runs for this
 candidate.
@@ -110,8 +122,9 @@ Next action is bounded acquisition, not Replay framework work:
 3. verify timestamps and interval continuity, then apply the frozen crossover
    selection rule;
 4. reject the candidate if no qualifying pre-18:30 crossover exists;
-5. otherwise freeze Shadow mapping and outcome rule before creating the formal
-   record.
+5. otherwise make Candidate T0 immutable, then freeze Shadow mapping, concrete
+   outcome thresholds and ABSTAIN accounting before revealing the future
+   15-minute candles.
 
 If any artifact cannot establish its timestamp or provenance, reject this
 candidate rather than downgrade it and count it toward the 3–5 FORMAL target.

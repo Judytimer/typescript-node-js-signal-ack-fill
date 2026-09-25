@@ -143,6 +143,10 @@ export function diagnoseFirstLong(
 /**
  * Selects the first post-release actionable MA crossover before a fixed cutoff.
  * It reads only closed candles and does not inspect any outcome horizon.
+ * Preconditions: the fixture has already passed interval/order validation and
+ * includes enough pre-release candles for an evaluable MA state at or before
+ * releaseAt. A HOLD/FLAT -> LONG/SHORT change is actionable; warm-up -> signal
+ * is not.
  */
 export function selectFirstActionableCrossover(
   fixture: HistoricalCandleFixture,

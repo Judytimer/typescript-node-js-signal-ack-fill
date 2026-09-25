@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   filterFormal,
+  freezeBaselineCandidateOutcome,
   freezeOutcomeHorizon,
+  FORMAL_OUTCOME_HORIZON_MS,
   runHistoricalReplay
 } from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
@@ -155,15 +157,37 @@ test("synthetic burn-in rejects warm-up signals and crossovers at the cutoff", (
   );
 });
 
-test("freezes an outcome horizon only before the next independent catalyst", () => {
-  assert.deepEqual(freezeOutcomeHorizon(1_000, 500, 2_000), {
+test("synthetic burn-in treats HOLD to LONG as actionable", () => {
+  const fixture = syntheticCandles([100, 100, 100, 100, 100, 100, 110]);
+  assert.deepEqual(
+    selectFirstActionableCrossover(fixture, 3, 6, 300_000, 600_000),
+    {
+      status: "QUALIFIED",
+      candidateT0: 360_000,
+      action: "LONG",
+      previousAction: "HOLD"
+    }
+  );
+});
+
+test("freezes T0 entry and the 15-minute hold before the next independent catalyst", () => {
+  assert.equal(FORMAL_OUTCOME_HORIZON_MS, 900_000);
+  assert.deepEqual(freezeOutcomeHorizon(1_000, 901_001), {
     candidateT0: 1_000,
-    horizonMs: 500,
-    endsAt: 1_500,
-    nextIndependentCatalystAt: 2_000
+    horizonMs: 900_000,
+    endsAt: 901_000,
+    nextIndependentCatalystAt: 901_001
+  });
+  assert.deepEqual(freezeBaselineCandidateOutcome(1_000, "LONG", 901_001), {
+    candidateT0: 1_000,
+    horizonMs: 900_000,
+    endsAt: 901_000,
+    nextIndependentCatalystAt: 901_001,
+    action: "LONG",
+    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE"
   });
   assert.throws(
-    () => freezeOutcomeHorizon(1_000, 500, 1_500),
+    () => freezeOutcomeHorizon(1_000, 901_000),
     /must end before the next independent catalyst/
   );
 });
