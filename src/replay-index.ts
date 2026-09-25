@@ -37,6 +37,11 @@ const schemaDemo: HistoricalReplayCase = {
       summary: "synthetic pre-T0 input used only to exercise the runner"
     }
   ],
+  catalystGroundTruth: {
+    status: "CONFIRMED",
+    assessedAt: 2_001,
+    basis: "synthetic source-truth fixture; it does not imply a PASS verdict"
+  },
   groundTruth: {
     ruleDefinedAt: 950,
     outcomeWindowEndsAt: 2_000,

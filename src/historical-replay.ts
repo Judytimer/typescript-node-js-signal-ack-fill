@@ -38,6 +38,12 @@ export type GroundTruthRecord = {
   aiShadowResult: EvaluationResult;
 };
 
+export type CatalystGroundTruthRecord = {
+  status: "CONFIRMED" | "REFUTED" | "AMBIGUOUS";
+  assessedAt: number;
+  basis: string;
+};
+
 export type HistoricalReplayCase = {
   candidateId: string;
   evaluationStatus: EvaluationStatus;
@@ -47,6 +53,8 @@ export type HistoricalReplayCase = {
   baseline: BaselineDecisionRecord;
   shadow: ShadowReviewRecord;
   evidence: readonly ReplayEvidence[];
+  /** Source/catalyst truth is assessed independently from the trading verdict. */
+  catalystGroundTruth: CatalystGroundTruthRecord;
   groundTruth: GroundTruthRecord;
 };
 
@@ -211,6 +219,15 @@ function validateReplayCase(replayCase: HistoricalReplayCase, candidateIds: Set<
     if (!sourceIds.has(sourceId)) {
       throw new Error(`review cites unknown source ${sourceId}`);
     }
+  }
+
+  const catalystTruth = replayCase.catalystGroundTruth;
+  if (
+    !["CONFIRMED", "REFUTED", "AMBIGUOUS"].includes(catalystTruth.status) ||
+    !Number.isFinite(catalystTruth.assessedAt) ||
+    catalystTruth.basis.length === 0
+  ) {
+    throw new Error("catalyst ground truth is invalid");
   }
 
   const truth = replayCase.groundTruth;

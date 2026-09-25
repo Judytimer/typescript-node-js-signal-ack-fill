@@ -80,3 +80,9 @@ milliseconds, changes bucket-start timestamps to bucket-end timestamps, sorts
 ascending, and rejects non-2xx responses, duplicates, and gaps. It has only
 been exercised with synthetic DEMO rows; no real FOMC candle was introduced or
 inspected in this environment.
+
+`18:10 UTC LONG -> SHORT` is an external diagnostic, not a formal expectation
+or acceptance assertion. When real admitted bytes become available, a mismatch
+triggers one audit each of raw bytes, field mapping, and timestamp semantics.
+If all three are valid, the repository selector output is authoritative; the
+external diagnostic is discarded and the selector is not changed.

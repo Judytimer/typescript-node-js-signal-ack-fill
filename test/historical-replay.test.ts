@@ -32,6 +32,7 @@ test("emits a reproducible shadow record without granting trading authority", ()
   assert.equal(record.mode, "HISTORICAL_REPLAY");
   assert.equal(record.baseline.decision, "LONG");
   assert.equal(record.shadow.verdict, "WOULD_BLOCK");
+  assert.equal(record.catalystGroundTruth.status, "CONFIRMED");
   assert.equal(record.groundTruth.aiShadowResult, "SUCCESS");
   assert.notEqual(record, input);
 });
@@ -230,6 +231,11 @@ function replayCase(
       reason: "single unconfirmed source"
     },
     evidence: [{ sourceId: "SOURCE-1", publishedAt: 900, summary: "available before T0" }],
+    catalystGroundTruth: {
+      status: "CONFIRMED",
+      assessedAt: 2_001,
+      basis: "objective source truth, independent of WOULD_BLOCK"
+    },
     groundTruth: {
       ruleDefinedAt: 950,
       outcomeWindowEndsAt: 2_000,

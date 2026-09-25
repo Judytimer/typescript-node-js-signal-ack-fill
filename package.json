@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",
     "demo": "node --experimental-strip-types src/interview-demo.ts",
+    "acquire:formal-case-1": "bash scripts/acquire-formal-case-1.sh",
     "overlay": "node --experimental-strip-types src/overlay-index.ts",
     "replay": "node --experimental-strip-types src/replay-index.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts"

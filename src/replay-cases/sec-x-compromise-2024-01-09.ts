@@ -36,6 +36,11 @@ export function createSecXCompromiseCase(
         summary: "The @SECGov account stated that spot Bitcoin ETFs had been approved. The post was later deleted; its timestamp and content are reconstructed from the SEC incident report, not from a project-owned T0 archive."
       }
     ],
+    catalystGroundTruth: {
+      status: "REFUTED",
+      assessedAt: Date.parse("2024-01-09T21:26:00Z"),
+      basis: "SEC Chair publicly stated that the account was compromised and no approval had been granted."
+    },
     groundTruth: {
       // This is the replay protocol's logical cutoff, not proof that the rule was
       // durably recorded in 2024. That provenance gap makes the case qualitative.

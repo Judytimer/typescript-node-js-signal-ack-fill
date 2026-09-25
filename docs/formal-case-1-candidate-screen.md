@@ -113,6 +113,11 @@ Derived or hand-transcribed candles are not substitutes for the raw vendor
 artifact. Acquisition does not itself admit the case; interval, freshness and
 crossover validation must still pass.
 
+Adapter output cannot claim vendor provenance from an arbitrary body plus a
+caller-computed checksum. The acquisition record must first prove curl exit 0,
+HTTP 2xx, request/response metadata agreement, and checksum integrity; only
+the admission boundary may grant `VENDOR_ARCHIVE` to the adapter input.
+
 The first acquisition attempt was blocked by this execution environment
 before either source returned bytes. No failed proxy response is treated as an
 artifact; see
@@ -132,6 +137,10 @@ Only after the frozen selection rule produces a qualifying Candidate T0:
 
 If no qualifying crossover exists, none of these steps runs for this
 candidate.
+
+Catalyst/evidence ground truth is recorded independently from trading
+evaluation. `CONFIRMED` source truth does not imply Shadow `PASS`, just as
+`REFUTED` does not mechanically imply `WOULD_BLOCK`.
 
 ## Admission Decision
 
