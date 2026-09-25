@@ -34,7 +34,7 @@ Historical Replay 提供最小研究记录边界：Baseline 与 AI Shadow 同时
 npm run replay
 ```
 
-该命令只运行标记为 `DEMO-NOT-FORMAL-EVALUATION` 的 schema smoke fixture，不计入正式 Historical Replay 样本。
+该命令输出 schema smoke fixture，以及第一个真实事件 replay：2024-01-09 SEC X 账号被入侵事件。真实事件缺少项目在 T0 留存的原始快照，Shadow 也由事后重放，因此明确标记为 `QUALITATIVE_ONLY`；它不能计入 AI vs Baseline 的正式成绩，也不会为了凑满 3 个案例而被包装成无泄漏样本。
 
 ## 运行
 

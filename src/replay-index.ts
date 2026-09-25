@@ -1,5 +1,9 @@
 import { runHistoricalReplay } from "./historical-replay.ts";
 import type { HistoricalReplayCase } from "./historical-replay.ts";
+import {
+  secXCompromiseAssessment,
+  secXCompromiseCase
+} from "./replay-cases/sec-x-compromise-2024-01-09.ts";
 
 // Schema smoke fixture only. It is deliberately not counted as historical evidence.
 const schemaDemo: HistoricalReplayCase = {
@@ -36,5 +40,5 @@ const schemaDemo: HistoricalReplayCase = {
   }
 };
 
-const records = runHistoricalReplay([schemaDemo]);
-console.log(JSON.stringify(records, null, 2));
+const records = runHistoricalReplay([schemaDemo, secXCompromiseCase]);
+console.log(JSON.stringify({ records, assessments: [secXCompromiseAssessment] }, null, 2));

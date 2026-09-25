@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { runHistoricalReplay } from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
+import {
+  secXCompromiseAssessment,
+  secXCompromiseCase
+} from "../src/replay-cases/sec-x-compromise-2024-01-09.ts";
 
 test("emits a reproducible shadow record without granting trading authority", () => {
   const input = replayCase();
@@ -33,6 +37,19 @@ test("rejects ground truth defined late or observed before the outcome window cl
   const earlyOutcome = replayCase();
   earlyOutcome.groundTruth.observedAt = earlyOutcome.groundTruth.outcomeWindowEndsAt - 1;
   assert.throws(() => runHistoricalReplay([earlyOutcome]), /before its window ends/);
+});
+
+test("keeps the first real replay case qualitative when T0 provenance is not archived", () => {
+  const [record] = runHistoricalReplay([secXCompromiseCase]);
+
+  assert.equal(record.candidateId, "BTC-SEC-X-COMPROMISE-2024-01-09");
+  assert.equal(record.shadow.verdict, "ABSTAIN");
+  assert.equal(record.groundTruth.baselineResult, "AMBIGUOUS");
+  assert.equal(record.groundTruth.aiShadowResult, "AMBIGUOUS");
+  assert.equal(secXCompromiseAssessment.evaluationEligibility, "QUALITATIVE_ONLY");
+  assert.equal(secXCompromiseAssessment.hindsightLeakage, "NOT_EXCLUDED");
+  assert.match(secXCompromiseAssessment.aiIncrement, /cannot be measured/);
+  assert.match(secXCompromiseAssessment.interviewUse, /not valid evidence/);
 });
 
 function replayCase(): HistoricalReplayCase {
