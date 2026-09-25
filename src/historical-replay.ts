@@ -4,6 +4,7 @@ export type ShadowVerdict = "PASS" | "WOULD_BLOCK" | "ABSTAIN";
 export type EvaluationResult = "SUCCESS" | "FAILURE" | "NEUTRAL" | "AMBIGUOUS";
 export type EvaluationStatus = "DEMO" | "QUALITATIVE_ONLY" | "FORMAL";
 export type OutcomeStatus = "MEASURED" | "NOT_MEASURABLE";
+export type InputProvenance = "ARCHIVED" | "RECONSTRUCTED" | "MIXED";
 
 export type ReplayEvidence = {
   sourceId: string;
@@ -41,6 +42,7 @@ export type HistoricalReplayCase = {
   candidateId: string;
   evaluationStatus: EvaluationStatus;
   outcomeStatus: OutcomeStatus;
+  inputProvenance: InputProvenance;
   t0: number;
   baseline: BaselineDecisionRecord;
   shadow: ShadowReviewRecord;
@@ -89,8 +91,14 @@ function validateReplayCase(replayCase: HistoricalReplayCase, candidateIds: Set<
   if (!["MEASURED", "NOT_MEASURABLE"].includes(replayCase.outcomeStatus)) {
     throw new Error("outcomeStatus is invalid");
   }
+  if (!["ARCHIVED", "RECONSTRUCTED", "MIXED"].includes(replayCase.inputProvenance)) {
+    throw new Error("inputProvenance is invalid");
+  }
   if (replayCase.evaluationStatus === "FORMAL" && replayCase.outcomeStatus !== "MEASURED") {
     throw new Error("formal replay outcome must be measurable");
+  }
+  if (replayCase.evaluationStatus === "FORMAL" && replayCase.inputProvenance !== "ARCHIVED") {
+    throw new Error("formal replay inputs must be archived");
   }
   if (!Number.isFinite(replayCase.t0)) {
     throw new Error("T0 must be finite");

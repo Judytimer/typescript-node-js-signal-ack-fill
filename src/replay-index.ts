@@ -1,6 +1,10 @@
 import { filterFormal, runHistoricalReplay } from "./historical-replay.ts";
 import type { HistoricalReplayCase } from "./historical-replay.ts";
-import { loadHistoricalCandles, replayMovingAverageBaseline } from "./historical-candles.ts";
+import {
+  diagnoseFirstLong,
+  loadHistoricalCandles,
+  replayMovingAverageBaseline
+} from "./historical-candles.ts";
 import {
   secXCompromiseAssessment,
   createSecXCompromiseCase
@@ -11,6 +15,7 @@ const schemaDemo: HistoricalReplayCase = {
   candidateId: "DEMO-NOT-FORMAL-EVALUATION",
   evaluationStatus: "DEMO",
   outcomeStatus: "NOT_MEASURABLE",
+  inputProvenance: "RECONSTRUCTED",
   t0: 1_000,
   baseline: {
     decision: "LONG",
@@ -53,7 +58,12 @@ const realCase = createSecXCompromiseCase(replayMovingAverageBaseline(candles, 3
 const records = runHistoricalReplay([schemaDemo, realCase]);
 console.log(
   JSON.stringify(
-    { records, formalRecords: filterFormal(records), assessments: [secXCompromiseAssessment] },
+    {
+      records,
+      formalRecords: filterFormal(records),
+      diagnostics: [{ candidateId: realCase.candidateId, ...diagnoseFirstLong(candles, 3, 6) }],
+      assessments: [secXCompromiseAssessment]
+    },
     null,
     2
   )

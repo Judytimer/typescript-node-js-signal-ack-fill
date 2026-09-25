@@ -15,6 +15,7 @@ export function createSecXCompromiseCase(
     candidateId: "BTC-SEC-X-COMPROMISE-2024-01-09",
     evaluationStatus: "QUALITATIVE_ONLY",
     outcomeStatus: "NOT_MEASURABLE",
+    inputProvenance: "RECONSTRUCTED",
     // The unauthorized @SECGov post appeared at approximately 16:11 ET. The
     // replay cutoff is one minute later, before the first public correction.
     t0: Date.parse("2024-01-09T21:12:00Z"),
@@ -55,6 +56,7 @@ export const secXCompromiseAssessment = {
   t0Assessment: "REAL_CUTOFF_RECONSTRUCTED_AFTER_EVENT" as const,
   hindsightLeakage: "NOT_EXCLUDED" as const,
   aiIncrement: "Source-sufficiency check would abstain on a single uncorroborated social post; predictive increment cannot be measured from a retrospective review." as const,
+  baselineCausalCheck: "The first evaluable MA(3,6) LONG is at 21:11 UTC, but all earlier fixture points are warm-up; the retained data does not prove a crossover from a prior evaluable non-LONG signal." as const,
   interviewUse: "Useful for explaining T0 provenance and why Shadow cannot self-certify a win; not valid evidence that AI beats Baseline." as const,
   limitations: [
     "The project did not archive the deleted @SECGov post at T0.",

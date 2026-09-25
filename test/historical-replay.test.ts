@@ -4,8 +4,10 @@ import test from "node:test";
 import { filterFormal, runHistoricalReplay } from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
 import {
+  diagnoseFirstLong,
   loadHistoricalCandles,
-  replayMovingAverageBaseline
+  replayMovingAverageBaseline,
+  validateHistoricalCandleFixture
 } from "../src/historical-candles.ts";
 import {
   secXCompromiseAssessment,
@@ -55,6 +57,7 @@ test("derives the qualitative case Baseline from its candle fixture", async () =
   assert.equal(record.candidateId, "BTC-SEC-X-COMPROMISE-2024-01-09");
   assert.equal(record.evaluationStatus, "QUALITATIVE_ONLY");
   assert.equal(record.outcomeStatus, "NOT_MEASURABLE");
+  assert.equal(record.inputProvenance, "RECONSTRUCTED");
   assert.equal(record.baseline.decision, "LONG");
   assert.match(record.baseline.reason, /MovingAverageSignal\(3,6\).*short MA > long MA/);
   assert.equal(record.shadow.verdict, "ABSTAIN");
@@ -63,6 +66,11 @@ test("derives the qualitative case Baseline from its candle fixture", async () =
   assert.equal(secXCompromiseAssessment.hindsightLeakage, "NOT_EXCLUDED");
   assert.match(secXCompromiseAssessment.aiIncrement, /cannot be measured/);
   assert.match(secXCompromiseAssessment.interviewUse, /not valid evidence/);
+
+  const diagnostic = diagnoseFirstLong(fixture, 3, 6);
+  assert.equal(diagnostic.firstLongAt, Date.parse("2024-01-09T21:11:00Z"));
+  assert.equal(diagnostic.previousEvaluableAction, null);
+  assert.equal(diagnostic.observedCrossover, false);
 });
 
 test("filterFormal excludes demo, qualitative, and unmeasurable records", () => {
@@ -81,6 +89,40 @@ test("rejects a FORMAL record whose outcome is not measurable", () => {
   );
 });
 
+test("rejects FORMAL records backed by reconstructed or mixed inputs", () => {
+  for (const inputProvenance of ["RECONSTRUCTED", "MIXED"] as const) {
+    const input = replayCase("FORMAL", "MEASURED", `FORMAL-${inputProvenance}`);
+    input.inputProvenance = inputProvenance;
+    assert.throws(() => runHistoricalReplay([input]), /formal replay inputs must be archived/);
+  }
+});
+
+test("validates candle interval consistency and freshness at T0", () => {
+  const base = {
+    symbol: "BTC-USD",
+    source: "vendor fixture",
+    provenance: "VENDOR_ARCHIVE",
+    intervalMs: 60_000,
+    candles: [
+      { ts: 880_000, close: 100 },
+      { ts: 940_000, close: 101 }
+    ]
+  };
+  assert.equal(validateHistoricalCandleFixture(base, "BTC-USD", 1_000_000).intervalMs, 60_000);
+
+  const inconsistent = structuredClone(base);
+  inconsistent.candles[1].ts = 950_000;
+  assert.throws(
+    () => validateHistoricalCandleFixture(inconsistent, "BTC-USD", 1_000_000),
+    /interval is inconsistent/
+  );
+
+  assert.throws(
+    () => validateHistoricalCandleFixture(base, "BTC-USD", 1_000_001),
+    /stale at T0/
+  );
+});
+
 function replayCase(
   evaluationStatus: HistoricalReplayCase["evaluationStatus"] = "FORMAL",
   outcomeStatus: HistoricalReplayCase["outcomeStatus"] = "MEASURED",
@@ -90,6 +132,7 @@ function replayCase(
     candidateId,
     evaluationStatus,
     outcomeStatus,
+    inputProvenance: "ARCHIVED",
     t0: 1_000,
     baseline: { decision: "LONG", reason: "baseline signal" },
     shadow: {

@@ -18,7 +18,7 @@
 | Liquidation | 最小完成 | mark trigger 与 execution boundary 分离 | venue liquidation event 与 reopened exposure recovery |
 | Recovery | 部分完成 | checkpoint、atomic save、unresolved order fail-closed | authoritative snapshot 驱动的恢复完成路径 |
 | Reconciliation | 起步完成 | Position/order read-only mismatch report | resolution policy 与状态收敛 |
-| Historical Replay | 基础设施完成 | T0、Shadow labels、predefined ground truth、runner | 3–5 个真实代表性案例 |
+| Historical Replay | Pre-Formal gate 完成 | T0、input provenance、candle interval/freshness、formal filter | 3–5 个 FORMAL records |
 | Prospective Sampling | Roadmap | 已明确不阻塞求职版 | Freeze 后再开始未来样本 |
 
 ## 面试完成线：剩余四个里程碑
@@ -42,9 +42,9 @@ Restart → Recovery Required → Reconciliation Report
 
 M2A 已定义 authoritative recovery evidence contract；当前仍只验证 evidence，不修改本地状态。M2B 只有获得满足 contract 的真实 snapshot 后，才定义窄的恢复完成路径。当前只读 reconciliation 已足够发现差异，但尚不能安全解除 `RECOVERY_REQUIRED`。
 
-### M3｜3–5 个真实 Historical Replay 案例
+### M3｜3–5 个 FORMAL Historical Replay records
 
-每个案例必须具备真实 T0、T0 前来源、预定义 outcome rule 和窗口结束后的 outcome。当前 `npm run replay` 只是 schema smoke，不计入样本。
+每条正式记录必须具备真实 T0、归档的 T0 前 event evidence、带 interval 且 fresh 到 T0 的 vendor market data、预定义 outcome rule 和窗口结束后的可测量 outcome。`RECONSTRUCTED / MIXED` 输入不能升级为 FORMAL。当前 SEC X 案例只是方法论反例，不计入正式样本。
 
 ### M4｜面试叙事与演示脚本
 
@@ -62,4 +62,4 @@ M2A 已定义 authoritative recovery evidence contract；当前仍只验证 evid
 
 ## 下一步
 
-下一步准备 **M3：3–5 个真实 Historical Replay 案例**。M2 recovery mutation 继续等待 authoritative exchange evidence，不阻塞案例与面试材料整理。
+下一步先筛选并完成 **FORMAL Case #1**；成功后再扩到 3–5 条 FORMAL records。M2 recovery mutation 继续等待 authoritative exchange evidence，不阻塞案例与面试材料整理。

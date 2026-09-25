@@ -2,6 +2,7 @@
   "symbol": "BTC-USD",
   "source": "qualitative reconstruction for BTC-SEC-X-COMPROMISE-2024-01-09",
   "provenance": "RECONSTRUCTED",
+  "intervalMs": 60000,
   "candles": [
     { "ts": 1704834360000, "close": 46620 },
     { "ts": 1704834420000, "close": 46650 },
