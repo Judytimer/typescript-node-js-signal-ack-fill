@@ -54,6 +54,35 @@ export type HistoricalReplayRecord = HistoricalReplayCase & {
   mode: "HISTORICAL_REPLAY";
 };
 
+export type FrozenOutcomeHorizon = {
+  candidateT0: number;
+  horizonMs: number;
+  endsAt: number;
+  nextIndependentCatalystAt: number | null;
+};
+
+/** Freezes a clean horizon which ends before the next independent catalyst. */
+export function freezeOutcomeHorizon(
+  candidateT0: number,
+  horizonMs: number,
+  nextIndependentCatalystAt: number | null
+): FrozenOutcomeHorizon {
+  if (!Number.isFinite(candidateT0) || !Number.isFinite(horizonMs) || horizonMs <= 0) {
+    throw new Error("outcome horizon is invalid");
+  }
+  const endsAt = candidateT0 + horizonMs;
+  if (!Number.isFinite(endsAt)) {
+    throw new Error("outcome horizon is invalid");
+  }
+  if (
+    nextIndependentCatalystAt !== null &&
+    (!Number.isFinite(nextIndependentCatalystAt) || endsAt >= nextIndependentCatalystAt)
+  ) {
+    throw new Error("outcome horizon must end before the next independent catalyst");
+  }
+  return { candidateT0, horizonMs, endsAt, nextIndependentCatalystAt };
+}
+
 /**
  * Validates the T0 and ground-truth contract, then emits immutable research
  * records. It does not map reviewer output to orders or tune reviewer prompts.

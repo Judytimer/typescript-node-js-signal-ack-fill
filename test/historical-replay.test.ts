@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { filterFormal, runHistoricalReplay } from "../src/historical-replay.ts";
+import {
+  filterFormal,
+  freezeOutcomeHorizon,
+  runHistoricalReplay
+} from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
 import {
   diagnoseFirstLong,
   loadHistoricalCandles,
   replayMovingAverageBaseline,
+  selectFirstActionableCrossover,
   validateHistoricalCandleFixture
 } from "../src/historical-candles.ts";
+import type { HistoricalCandleFixture } from "../src/historical-candles.ts";
 import {
   secXCompromiseAssessment,
   createSecXCompromiseCase
@@ -123,6 +129,45 @@ test("validates candle interval consistency and freshness at T0", () => {
   );
 });
 
+test("synthetic burn-in selects the first actionable post-release crossover", () => {
+  const fixture = syntheticCandles([106, 105, 104, 103, 102, 101, 110, 111]);
+  const selection = selectFirstActionableCrossover(fixture, 3, 6, 300_000, 600_000);
+
+  assert.deepEqual(selection, {
+    status: "QUALIFIED",
+    candidateT0: 360_000,
+    action: "LONG",
+    previousAction: "SHORT"
+  });
+});
+
+test("synthetic burn-in rejects warm-up signals and crossovers at the cutoff", () => {
+  const noPriorSignal = syntheticCandles([100, 101, 102, 103, 104, 105]);
+  assert.deepEqual(
+    selectFirstActionableCrossover(noPriorSignal, 3, 6, 240_000, 600_000),
+    { status: "REJECTED", reason: "NO_PRIOR_EVALUABLE_SIGNAL" }
+  );
+
+  const crossoverAtCutoff = syntheticCandles([106, 105, 104, 103, 102, 101, 110]);
+  assert.deepEqual(
+    selectFirstActionableCrossover(crossoverAtCutoff, 3, 6, 300_000, 360_000),
+    { status: "REJECTED", reason: "NO_QUALIFYING_CROSSOVER" }
+  );
+});
+
+test("freezes an outcome horizon only before the next independent catalyst", () => {
+  assert.deepEqual(freezeOutcomeHorizon(1_000, 500, 2_000), {
+    candidateT0: 1_000,
+    horizonMs: 500,
+    endsAt: 1_500,
+    nextIndependentCatalystAt: 2_000
+  });
+  assert.throws(
+    () => freezeOutcomeHorizon(1_000, 500, 1_500),
+    /must end before the next independent catalyst/
+  );
+});
+
 function replayCase(
   evaluationStatus: HistoricalReplayCase["evaluationStatus"] = "FORMAL",
   outcomeStatus: HistoricalReplayCase["outcomeStatus"] = "MEASURED",
@@ -154,5 +199,15 @@ function replayCase(
       baselineResult: "FAILURE",
       aiShadowResult: "SUCCESS"
     }
+  };
+}
+
+function syntheticCandles(closes: readonly number[]): HistoricalCandleFixture {
+  return {
+    symbol: "BTC-USD",
+    source: "synthetic DEMO burn-in",
+    provenance: "RECONSTRUCTED",
+    intervalMs: 60_000,
+    candles: closes.map((close, index) => ({ ts: index * 60_000, close }))
   };
 }

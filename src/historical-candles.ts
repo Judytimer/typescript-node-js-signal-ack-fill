@@ -4,6 +4,7 @@ import { MovingAverageSignal } from "./strategy.ts";
 import type { BaselineDecisionRecord } from "./historical-replay.ts";
 
 export type HistoricalCandle = {
+  /** Close time of this fully closed candle. */
   ts: number;
   close: number;
 };
@@ -21,6 +22,18 @@ export type FirstLongDiagnostic = {
   previousEvaluableAction: "LONG" | "SHORT" | "HOLD" | null;
   observedCrossover: boolean;
 };
+
+export type CandidateSelection =
+  | {
+      status: "QUALIFIED";
+      candidateT0: number;
+      action: "LONG" | "SHORT";
+      previousAction: "LONG" | "SHORT" | "HOLD";
+    }
+  | {
+      status: "REJECTED";
+      reason: "NO_PRIOR_EVALUABLE_SIGNAL" | "NO_QUALIFYING_CROSSOVER";
+    };
 
 export async function loadHistoricalCandles(
   path: URL,
@@ -125,6 +138,64 @@ export function diagnoseFirstLong(
   }
 
   return { firstLongAt: null, previousEvaluableAction, observedCrossover: false };
+}
+
+/**
+ * Selects the first post-release actionable MA crossover before a fixed cutoff.
+ * It reads only closed candles and does not inspect any outcome horizon.
+ */
+export function selectFirstActionableCrossover(
+  fixture: HistoricalCandleFixture,
+  shortWindow: number,
+  longWindow: number,
+  releaseAt: number,
+  cutoffExclusive: number
+): CandidateSelection {
+  if (!Number.isFinite(releaseAt) || !Number.isFinite(cutoffExclusive) || releaseAt >= cutoffExclusive) {
+    throw new Error("candidate selection window is invalid");
+  }
+
+  const strategy = new MovingAverageSignal(shortWindow, longWindow);
+  let previousAction: "LONG" | "SHORT" | "HOLD" | null = null;
+  let hadEvaluableSignalByRelease = false;
+
+  for (let index = 0; index < fixture.candles.length; index++) {
+    const candle = fixture.candles[index];
+    const signal = strategy.onTick(toTick(fixture, index));
+    if (signal.shortMa === null || signal.longMa === null) {
+      continue;
+    }
+
+    if (candle.ts <= releaseAt) {
+      previousAction = signal.action;
+      hadEvaluableSignalByRelease = true;
+      continue;
+    }
+    if (candle.ts >= cutoffExclusive) {
+      break;
+    }
+    if (
+      hadEvaluableSignalByRelease &&
+      previousAction !== null &&
+      signal.action !== "HOLD" &&
+      signal.action !== previousAction
+    ) {
+      return {
+        status: "QUALIFIED",
+        candidateT0: candle.ts,
+        action: signal.action,
+        previousAction
+      };
+    }
+    previousAction = signal.action;
+  }
+
+  return {
+    status: "REJECTED",
+    reason: hadEvaluableSignalByRelease
+      ? "NO_QUALIFYING_CROSSOVER"
+      : "NO_PRIOR_EVALUABLE_SIGNAL"
+  };
 }
 
 function toTick(fixture: HistoricalCandleFixture, index: number) {

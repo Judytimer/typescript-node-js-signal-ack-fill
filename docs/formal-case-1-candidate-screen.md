@@ -37,6 +37,24 @@ candles:
 This makes the event-to-candidate relation a deterministic selection rule
 rather than a timestamp chosen after viewing the chart.
 
+The rule is implemented as the pure `selectFirstActionableCrossover()`
+function. Synthetic DEMO burn-in proves that it selects the first
+`SHORT -> LONG` crossover, rejects a warm-up-only first signal, and treats the
+18:30 cutoff as exclusive.
+
+## Frozen Clean-Horizon Rule
+
+The exact duration `H` is frozen only after a qualifying Candidate T0 exists.
+Regardless of the chosen duration, the following rule is already fixed:
+
+```text
+outcomeEnd = Candidate T0 + H
+outcomeEnd < nextIndependentCatalystAt
+```
+
+Equality is not clean and must be rejected. `freezeOutcomeHorizon()` enforces
+this boundary without reading prices or scoring an outcome.
+
 ## Pre-Formal Gate
 
 | Gate | Result | Required evidence |
@@ -45,6 +63,7 @@ rather than a timestamp chosen after viewing the chart.
 | Archived/vendor market data | FAIL | No raw vendor BTC-USD response for the event window is currently stored in the repository. A source URL written in a fixture is not sufficient. |
 | Candle interval and T0 freshness | PENDING | Validate one-minute continuity and require the final input candle to be no more than one interval behind T0. |
 | Baseline/catalyst causal alignment | PENDING | Apply the frozen selection rule. The first actionable crossover must occur after the release and strictly before 18:30 UTC. |
+| Clean outcome horizon | READY | Pure validation requires `Candidate T0 + H` to be strictly earlier than the next independent catalyst. Exact `H` remains unfrozen until Candidate T0 exists. |
 | Shadow mapping and outcome rule | DEFERRED | Freeze only after a qualifying Candidate T0 exists, and before evaluating the post-T0 outcome or producing a scored record. |
 
 ## Artifact Acquisition Contract
