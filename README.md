@@ -24,6 +24,8 @@ simulateMarket
 
 Reconciliation 目前提供只读比较边界：输入本地 Position / open orders 与权威 exchange snapshot，报告 position mismatch、missing/unexpected order 和 remaining quantity mismatch。它不会自动覆盖任一侧状态；恢复策略仍保持 fail-closed。
 
+Recovery Evidence contract 进一步要求 venue/account/symbol identity、`asOf`、完整 open-orders 声明、权威 position、terminal order facts 与 checkpoint 后 fills。该 contract 只验证 evidence 是否足够进入未来 M2B 设计，不修改本地状态，也不包含 fresh mark。
+
 Funding 作为独立结算事件输入：事件携带 `fundingId / rate / markPrice / ts`，正费率下多仓支付、空仓收取，负费率方向相反。Funding 修改 realized equity，但无权覆盖最新 market mark；`fundingId` 会进入 checkpoint，以保证重启后的重复结算仍然幂等。当前不包含 funding alpha 或交易所费率预测。
 
 Historical Replay 提供最小研究记录边界：Baseline 与 AI Shadow 同时留档，所有证据必须满足 T0，Ground Truth 规则必须在 T0 前定义，outcome 只能在预设窗口结束后记录。该 runner 只产出研究记录，不把 Shadow verdict 映射成订单或 PerpIntent。
@@ -76,6 +78,7 @@ npm test
 - `src/margin.ts`: 逐仓权益、保证金门槛与强平条件
 - `src/state-store.ts`: 版本化 checkpoint 与原子 JSON 文件存储
 - `src/reconciliation.ts`: 本地状态与 exchange snapshot 的只读一致性报告
+- `src/recovery-evidence.ts`: M2A authoritative recovery evidence contract 与 validation
 - `src/historical-replay.ts`: T0-safe Historical Replay schema 与研究记录 runner
 - `src/position.ts`: 持仓更新
 - `src/logging.ts`: 日志格式

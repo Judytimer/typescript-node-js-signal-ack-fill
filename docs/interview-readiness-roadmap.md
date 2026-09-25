@@ -38,9 +38,9 @@ Restart → Recovery Required → Reconciliation Report
 
 当前可通过 `npm run demo` 重复运行上述三段 trace。
 
-### M2｜最小 recovery completion
+### M2｜最小 recovery completion（M2A evidence contract ✅）
 
-只有获得 authoritative exchange snapshot 后，定义一个窄的恢复完成路径。当前只读 reconciliation 已足够发现差异，但尚不能安全解除 `RECOVERY_REQUIRED`。
+M2A 已定义 authoritative recovery evidence contract；当前仍只验证 evidence，不修改本地状态。M2B 只有获得满足 contract 的真实 snapshot 后，才定义窄的恢复完成路径。当前只读 reconciliation 已足够发现差异，但尚不能安全解除 `RECOVERY_REQUIRED`。
 
 ### M3｜3–5 个真实 Historical Replay 案例
 
