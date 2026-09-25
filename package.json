@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",
     "overlay": "node --experimental-strip-types src/overlay-index.ts",
+    "replay": "node --experimental-strip-types src/replay-index.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts"
   }
 }

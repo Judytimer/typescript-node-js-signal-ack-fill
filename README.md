@@ -28,6 +28,12 @@ Funding 作为独立结算事件输入：事件携带 `fundingId / rate / markPr
 
 Historical Replay 提供最小研究记录边界：Baseline 与 AI Shadow 同时留档，所有证据必须满足 T0，Ground Truth 规则必须在 T0 前定义，outcome 只能在预设窗口结束后记录。该 runner 只产出研究记录，不把 Shadow verdict 映射成订单或 PerpIntent。
 
+```bash
+npm run replay
+```
+
+该命令只运行标记为 `DEMO-NOT-FORMAL-EVALUATION` 的 schema smoke fixture，不计入正式 Historical Replay 样本。
+
 ## 运行
 
 ```bash
