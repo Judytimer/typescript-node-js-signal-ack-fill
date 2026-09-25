@@ -1,0 +1,13 @@
+{
+  "symbol": "BTC-USD",
+  "source": "qualitative reconstruction for BTC-SEC-X-COMPROMISE-2024-01-09",
+  "provenance": "RECONSTRUCTED",
+  "candles": [
+    { "ts": 1704834360000, "close": 46620 },
+    { "ts": 1704834420000, "close": 46650 },
+    { "ts": 1704834480000, "close": 46710 },
+    { "ts": 1704834540000, "close": 46800 },
+    { "ts": 1704834600000, "close": 47100 },
+    { "ts": 1704834660000, "close": 47680 }
+  ]
+}

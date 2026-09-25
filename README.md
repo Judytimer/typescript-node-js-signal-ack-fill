@@ -28,13 +28,13 @@ Recovery Evidence contract 进一步要求 venue/account/symbol identity、`asOf
 
 Funding 作为独立结算事件输入：事件携带 `fundingId / rate / markPrice / ts`，正费率下多仓支付、空仓收取，负费率方向相反。Funding 修改 realized equity，但无权覆盖最新 market mark；`fundingId` 会进入 checkpoint，以保证重启后的重复结算仍然幂等。当前不包含 funding alpha 或交易所费率预测。
 
-Historical Replay 提供最小研究记录边界：Baseline 与 AI Shadow 同时留档，所有证据必须满足 T0，Ground Truth 规则必须在 T0 前定义，outcome 只能在预设窗口结束后记录。该 runner 只产出研究记录，不把 Shadow verdict 映射成订单或 PerpIntent。
+Historical Replay 提供最小研究记录边界：Baseline 与 AI Shadow 同时留档，所有证据必须满足 T0，Ground Truth 规则必须在 T0 前定义，outcome 只能在预设窗口结束后记录。每个记录显式区分 `DEMO / QUALITATIVE_ONLY / FORMAL` 和 `MEASURED / NOT_MEASURABLE`；只有 measured formal records 会进入 `filterFormal()`。该 runner 只产出研究记录，不把 Shadow verdict 映射成订单或 PerpIntent。
 
 ```bash
 npm run replay
 ```
 
-该命令输出 schema smoke fixture，以及第一个真实事件 replay：2024-01-09 SEC X 账号被入侵事件。真实事件缺少项目在 T0 留存的原始快照，Shadow 也由事后重放，因此明确标记为 `QUALITATIVE_ONLY`；它不能计入 AI vs Baseline 的正式成绩，也不会为了凑满 3 个案例而被包装成无泄漏样本。
+该命令输出 schema smoke fixture，以及第一个真实事件 replay：2024-01-09 SEC X 账号被入侵事件。Baseline LONG 由最小 candle fixture 经真实 `MovingAverageSignal(3,6)` 重放产生，不再手写；但 candle 是 reconstruction、原始消息没有由项目在 T0 归档、Shadow 也由事后重放，因此该案例仍为 `QUALITATIVE_ONLY / NOT_MEASURABLE`，并被 formal filter 排除。
 
 ## 运行
 

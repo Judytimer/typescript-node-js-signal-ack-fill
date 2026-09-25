@@ -2,6 +2,8 @@ export type MoveValidity = "SUPPORTED" | "EMOTION_AMPLIFIED" | "INSUFFICIENT_SOU
 export type MoveDriver = "FUNDAMENTAL_EVENT" | "NARRATIVE" | "LIQUIDITY" | "MOMENTUM" | "NOISE" | "UNKNOWN";
 export type ShadowVerdict = "PASS" | "WOULD_BLOCK" | "ABSTAIN";
 export type EvaluationResult = "SUCCESS" | "FAILURE" | "NEUTRAL" | "AMBIGUOUS";
+export type EvaluationStatus = "DEMO" | "QUALITATIVE_ONLY" | "FORMAL";
+export type OutcomeStatus = "MEASURED" | "NOT_MEASURABLE";
 
 export type ReplayEvidence = {
   sourceId: string;
@@ -37,6 +39,8 @@ export type GroundTruthRecord = {
 
 export type HistoricalReplayCase = {
   candidateId: string;
+  evaluationStatus: EvaluationStatus;
+  outcomeStatus: OutcomeStatus;
   t0: number;
   baseline: BaselineDecisionRecord;
   shadow: ShadowReviewRecord;
@@ -63,12 +67,30 @@ export function runHistoricalReplay(
   });
 }
 
+/** Returns only scored, formally eligible records. */
+export function filterFormal(
+  records: readonly HistoricalReplayRecord[]
+): readonly HistoricalReplayRecord[] {
+  return records.filter(
+    (record) => record.evaluationStatus === "FORMAL" && record.outcomeStatus === "MEASURED"
+  );
+}
+
 function validateReplayCase(replayCase: HistoricalReplayCase, candidateIds: Set<string>): void {
   if (replayCase.candidateId.length === 0) {
     throw new Error("candidateId is required");
   }
   if (candidateIds.has(replayCase.candidateId)) {
     throw new Error(`duplicate candidateId ${replayCase.candidateId}`);
+  }
+  if (!["DEMO", "QUALITATIVE_ONLY", "FORMAL"].includes(replayCase.evaluationStatus)) {
+    throw new Error("evaluationStatus is invalid");
+  }
+  if (!["MEASURED", "NOT_MEASURABLE"].includes(replayCase.outcomeStatus)) {
+    throw new Error("outcomeStatus is invalid");
+  }
+  if (replayCase.evaluationStatus === "FORMAL" && replayCase.outcomeStatus !== "MEASURED") {
+    throw new Error("formal replay outcome must be measurable");
   }
   if (!Number.isFinite(replayCase.t0)) {
     throw new Error("T0 must be finite");

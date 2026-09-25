@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runHistoricalReplay } from "../src/historical-replay.ts";
+import { filterFormal, runHistoricalReplay } from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
 import {
+  loadHistoricalCandles,
+  replayMovingAverageBaseline
+} from "../src/historical-candles.ts";
+import {
   secXCompromiseAssessment,
-  secXCompromiseCase
+  createSecXCompromiseCase
 } from "../src/replay-cases/sec-x-compromise-2024-01-09.ts";
 
 test("emits a reproducible shadow record without granting trading authority", () => {
@@ -39,22 +43,53 @@ test("rejects ground truth defined late or observed before the outcome window cl
   assert.throws(() => runHistoricalReplay([earlyOutcome]), /before its window ends/);
 });
 
-test("keeps the first real replay case qualitative when T0 provenance is not archived", () => {
-  const [record] = runHistoricalReplay([secXCompromiseCase]);
+test("derives the qualitative case Baseline from its candle fixture", async () => {
+  const fixture = await loadHistoricalCandles(
+    new URL("../fixtures/historical/sec-x-compromise-2024-01-09.json", import.meta.url),
+    "BTC-USD",
+    Date.parse("2024-01-09T21:12:00Z")
+  );
+  const baseline = replayMovingAverageBaseline(fixture, 3, 6);
+  const [record] = runHistoricalReplay([createSecXCompromiseCase(baseline)]);
 
   assert.equal(record.candidateId, "BTC-SEC-X-COMPROMISE-2024-01-09");
+  assert.equal(record.evaluationStatus, "QUALITATIVE_ONLY");
+  assert.equal(record.outcomeStatus, "NOT_MEASURABLE");
+  assert.equal(record.baseline.decision, "LONG");
+  assert.match(record.baseline.reason, /MovingAverageSignal\(3,6\).*short MA > long MA/);
   assert.equal(record.shadow.verdict, "ABSTAIN");
   assert.equal(record.groundTruth.baselineResult, "AMBIGUOUS");
   assert.equal(record.groundTruth.aiShadowResult, "AMBIGUOUS");
-  assert.equal(secXCompromiseAssessment.evaluationEligibility, "QUALITATIVE_ONLY");
   assert.equal(secXCompromiseAssessment.hindsightLeakage, "NOT_EXCLUDED");
   assert.match(secXCompromiseAssessment.aiIncrement, /cannot be measured/);
   assert.match(secXCompromiseAssessment.interviewUse, /not valid evidence/);
 });
 
-function replayCase(): HistoricalReplayCase {
+test("filterFormal excludes demo, qualitative, and unmeasurable records", () => {
+  const demo = replayCase("DEMO", "NOT_MEASURABLE", "DEMO-CASE");
+  const qualitative = replayCase("QUALITATIVE_ONLY", "MEASURED", "QUALITATIVE-CASE");
+  const formal = replayCase("FORMAL", "MEASURED", "FORMAL-CASE");
+  const records = runHistoricalReplay([demo, qualitative, formal]);
+
+  assert.deepEqual(filterFormal(records).map((record) => record.candidateId), ["FORMAL-CASE"]);
+});
+
+test("rejects a FORMAL record whose outcome is not measurable", () => {
+  assert.throws(
+    () => runHistoricalReplay([replayCase("FORMAL", "NOT_MEASURABLE", "INVALID-FORMAL")]),
+    /formal replay outcome must be measurable/
+  );
+});
+
+function replayCase(
+  evaluationStatus: HistoricalReplayCase["evaluationStatus"] = "FORMAL",
+  outcomeStatus: HistoricalReplayCase["outcomeStatus"] = "MEASURED",
+  candidateId = "CASE-001"
+): HistoricalReplayCase {
   return {
-    candidateId: "CASE-001",
+    candidateId,
+    evaluationStatus,
+    outcomeStatus,
     t0: 1_000,
     baseline: { decision: "LONG", reason: "baseline signal" },
     shadow: {

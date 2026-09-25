@@ -1,13 +1,16 @@
-import { runHistoricalReplay } from "./historical-replay.ts";
+import { filterFormal, runHistoricalReplay } from "./historical-replay.ts";
 import type { HistoricalReplayCase } from "./historical-replay.ts";
+import { loadHistoricalCandles, replayMovingAverageBaseline } from "./historical-candles.ts";
 import {
   secXCompromiseAssessment,
-  secXCompromiseCase
+  createSecXCompromiseCase
 } from "./replay-cases/sec-x-compromise-2024-01-09.ts";
 
 // Schema smoke fixture only. It is deliberately not counted as historical evidence.
 const schemaDemo: HistoricalReplayCase = {
   candidateId: "DEMO-NOT-FORMAL-EVALUATION",
+  evaluationStatus: "DEMO",
+  outcomeStatus: "NOT_MEASURABLE",
   t0: 1_000,
   baseline: {
     decision: "LONG",
@@ -40,5 +43,18 @@ const schemaDemo: HistoricalReplayCase = {
   }
 };
 
-const records = runHistoricalReplay([schemaDemo, secXCompromiseCase]);
-console.log(JSON.stringify({ records, assessments: [secXCompromiseAssessment] }, null, 2));
+const t0 = Date.parse("2024-01-09T21:12:00Z");
+const candles = await loadHistoricalCandles(
+  new URL("../fixtures/historical/sec-x-compromise-2024-01-09.json", import.meta.url),
+  "BTC-USD",
+  t0
+);
+const realCase = createSecXCompromiseCase(replayMovingAverageBaseline(candles, 3, 6));
+const records = runHistoricalReplay([schemaDemo, realCase]);
+console.log(
+  JSON.stringify(
+    { records, formalRecords: filterFormal(records), assessments: [secXCompromiseAssessment] },
+    null,
+    2
+  )
+);
