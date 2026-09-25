@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",
+    "demo": "node --experimental-strip-types src/interview-demo.ts",
     "overlay": "node --experimental-strip-types src/overlay-index.ts",
     "replay": "node --experimental-strip-types src/replay-index.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts"

@@ -5,7 +5,7 @@
 
 ## 当前完成度
 
-整体约 **65%–70%**。这个比例只表示面试项目交付度，不表示 production readiness 或策略盈利能力。
+整体约 **75%**。这个比例只表示面试项目交付度，不表示 production readiness 或策略盈利能力。
 
 | 能力 | 状态 | 当前证据 | 仍缺什么 |
 | --- | --- | --- | --- |
@@ -23,7 +23,7 @@
 
 ## 面试完成线：剩余四个里程碑
 
-### M1｜Perp failure demo 收口
+### M1｜Perp failure demo 收口 ✅
 
 挑选现有 deterministic traces，形成一次可运行演示：
 
@@ -35,6 +35,8 @@ Restart → Recovery Required → Reconciliation Report
 ```
 
 不新增完整 Connector 或 EventLog。
+
+当前可通过 `npm run demo` 重复运行上述三段 trace。
 
 ### M2｜最小 recovery completion
 
@@ -60,4 +62,4 @@ Restart → Recovery Required → Reconciliation Report
 
 ## 下一步
 
-优先执行 **M1：复用已有测试与日志形成可重复的面试 demo**。它主要是交付整合，不需要制造新 Failure。随后再决定 M2 是否有足够 authoritative evidence 进入状态 mutation。
+下一步准备 **M3：3–5 个真实 Historical Replay 案例**。M2 recovery mutation 继续等待 authoritative exchange evidence，不阻塞案例与面试材料整理。

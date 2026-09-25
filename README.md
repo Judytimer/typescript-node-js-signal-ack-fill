@@ -38,7 +38,10 @@ npm run replay
 
 ```bash
 npm start
+npm run demo
 ```
+
+`npm run demo` 会依次展示 Partial Fill 生命周期、exchange-confirmed cancel 后的模拟强平，以及 restart 后的只读 reconciliation report。
 
 你会看到类似这些日志：
 
