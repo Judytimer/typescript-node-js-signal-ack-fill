@@ -113,6 +113,11 @@ Derived or hand-transcribed candles are not substitutes for the raw vendor
 artifact. Acquisition does not itself admit the case; interval, freshness and
 crossover validation must still pass.
 
+The first acquisition attempt was blocked by this execution environment
+before either source returned bytes. No failed proxy response is treated as an
+artifact; see
+[`formal-case-1-artifact-acquisition-attempt-2026-09-25.md`](formal-case-1-artifact-acquisition-attempt-2026-09-25.md).
+
 ## Post-Crossover Gate
 
 Only after the frozen selection rule produces a qualifying Candidate T0:
