@@ -61,11 +61,20 @@ export type FrozenOutcomeHorizon = {
   nextIndependentCatalystAt: number;
 };
 
+export const FORMAL_REPLAY_PROTOCOL_VERSION = "1.0.0";
 export const FORMAL_OUTCOME_HORIZON_MS = 15 * 60_000;
+export const FORMAL_OUTCOME_THRESHOLD_BPS = 50;
 
 export type FrozenBaselineCandidateOutcome = FrozenOutcomeHorizon & {
   action: "LONG" | "SHORT";
   method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE";
+  executionAssumption: "ZERO_LATENCY_T0_CLOSE";
+  counterfactualUsesSameAssumption: true;
+};
+
+export type FormalBaselineScore = {
+  result: "SUCCESS" | "FAILURE" | "NEUTRAL";
+  directionalReturnBps: number;
 };
 
 /** Freezes the 15-minute horizon, which must end before the next catalyst. */
@@ -100,8 +109,35 @@ export function freezeBaselineCandidateOutcome(
   return {
     ...freezeOutcomeHorizon(candidateT0, nextIndependentCatalystAt),
     action,
-    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE"
+    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE",
+    executionAssumption: "ZERO_LATENCY_T0_CLOSE",
+    counterfactualUsesSameAssumption: true
   };
+}
+
+/** Scores the globally frozen T0-close to T0+15m-close mechanical comparison. */
+export function scoreFormalBaselineOutcome(
+  action: "LONG" | "SHORT",
+  entryPrice: number,
+  exitPrice: number
+): FormalBaselineScore {
+  if (
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(exitPrice) ||
+    entryPrice <= 0 ||
+    exitPrice <= 0
+  ) {
+    throw new Error("formal outcome prices must be positive and finite");
+  }
+  const rawReturnBps = ((exitPrice - entryPrice) / entryPrice) * 10_000;
+  const directionalReturnBps = action === "LONG" ? rawReturnBps : -rawReturnBps;
+  const result =
+    directionalReturnBps >= FORMAL_OUTCOME_THRESHOLD_BPS
+      ? "SUCCESS"
+      : directionalReturnBps <= -FORMAL_OUTCOME_THRESHOLD_BPS
+        ? "FAILURE"
+        : "NEUTRAL";
+  return { result, directionalReturnBps };
 }
 
 /**

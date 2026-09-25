@@ -54,6 +54,16 @@ position = selected LONG or SHORT
 exit = Candidate T0 + 15 minutes close
 outcomeEnd = Candidate T0 + 15 minutes
 outcomeEnd < nextIndependentCatalystAt
+
+LONG:
+  return >= +50bps => SUCCESS
+  return <= -50bps => FAILURE
+  otherwise => NEUTRAL
+
+SHORT:
+  return <= -50bps => SUCCESS
+  return >= +50bps => FAILURE
+  otherwise => NEUTRAL
 ```
 
 Equality is not clean and must be rejected. `freezeOutcomeHorizon()` enforces
@@ -61,9 +71,23 @@ the fixed duration and catalyst boundary. `freezeBaselineCandidateOutcome()`
 records the T0-entry/15-minute-hold definition without reading prices or
 scoring an outcome.
 
+Protocol version is `1.0.0`. `FORMAL_OUTCOME_THRESHOLD_BPS = 50` is global,
+just like the 15-minute horizon. Individual Cases cannot override either
+value; changing one requires a new protocol version.
+
+Execution assumption: the Candidate T0 candle close produces the signal and
+the Baseline is assumed filled at that same close. This is a
+`zero-latency paper simplification`. Baseline and every Shadow counterfactual
+use the same mechanical assumption. This protocol does not add slippage,
+next-open, latency, or order-book execution models.
+
 Sample limitation: this study only covers conditional samples where a
 post-event actionable crossover exists before the fixed cutoff. It does not
-estimate unconditional event performance.
+estimate unconditional event performance. Baseline Candidate Outcome is a
+mechanical momentum-chase comparison: enter in the crossover direction after
+the move is already actionable and hold for 15 minutes. Any advantage from
+`ABSTAIN` or `WOULD_BLOCK` may therefore include the mechanical benefit of not
+chasing an existing directional move; it is not, by itself, AI alpha.
 
 ## Pre-Formal Gate
 
@@ -72,9 +96,9 @@ estimate unconditional event performance.
 | Credible event evidence available by T0 | PENDING | Save the official Federal Reserve release bytes, publication metadata, retrieval metadata, and checksum. Candidate locator: `https://www.federalreserve.gov/newsevents/pressreleases/monetary20240320a.htm`. |
 | Archived/vendor market data | FAIL | No raw vendor BTC-USD response for the event window is currently stored in the repository. A source URL written in a fixture is not sufficient. |
 | Candle interval and T0 freshness | PENDING | Validate one-minute continuity and require the final input candle to be no more than one interval behind T0. |
-| Baseline/catalyst causal alignment | PENDING | Apply the frozen selection rule. The first actionable crossover must occur after the release and strictly before 18:30 UTC. |
-| Baseline Candidate Outcome | READY | Enter selected side at immutable Candidate T0 and hold exactly 15 minutes; the end must be strictly earlier than the next independent catalyst. |
-| Shadow mapping and outcome rule | DEFERRED | Freeze only after a qualifying Candidate T0 exists, and before evaluating the post-T0 outcome or producing a scored record. |
+| Baseline/catalyst temporal/actionable alignment | PENDING | Apply the frozen selection rule. The first actionable crossover must occur after the release and strictly before 18:30 UTC. |
+| Baseline Candidate Outcome | READY | Assume zero-latency fill at immutable T0 close, hold selected side exactly 15 minutes, and score at global ±50bps thresholds; horizon end must be strictly earlier than the next independent catalyst. |
+| Shadow mapping / ABSTAIN accounting | DEFERRED | Freeze only after a qualifying Candidate T0 exists, and before evaluating the post-T0 outcome or producing a scored record. |
 
 ## Artifact Acquisition Contract
 
@@ -94,13 +118,12 @@ crossover validation must still pass.
 Only after the frozen selection rule produces a qualifying Candidate T0:
 
 1. freeze the Shadow verdict-to-result mapping;
-2. freeze the concrete price-return success/failure thresholds for the already
-   fixed T0-entry/15-minute-hold outcome;
-3. freeze ABSTAIN counterfactual accounting;
-4. build the T0 evidence packet and generate the Shadow review using only information available by Candidate
+2. freeze ABSTAIN counterfactual accounting;
+3. build the T0 evidence packet and generate the Shadow review using only information available by Candidate
    T0;
-5. reveal the future 15-minute candles and score Baseline/Shadow behavior;
-6. construct `FORMAL / MEASURED / ARCHIVED` Case #1.
+4. reveal the future 15-minute candles and score Baseline/Shadow behavior with
+   the already frozen ±50bps rule;
+5. construct `FORMAL / MEASURED / ARCHIVED` Case #1.
 
 If no qualifying crossover exists, none of these steps runs for this
 candidate.
@@ -122,9 +145,8 @@ Next action is bounded acquisition, not Replay framework work:
 3. verify timestamps and interval continuity, then apply the frozen crossover
    selection rule;
 4. reject the candidate if no qualifying pre-18:30 crossover exists;
-5. otherwise make Candidate T0 immutable, then freeze Shadow mapping, concrete
-   outcome thresholds and ABSTAIN accounting before revealing the future
-   15-minute candles.
+5. otherwise make Candidate T0 immutable, then freeze Shadow mapping and
+   ABSTAIN accounting before revealing the future 15-minute candles.
 
 If any artifact cannot establish its timestamp or provenance, reject this
 candidate rather than downgrade it and count it toward the 3–5 FORMAL target.

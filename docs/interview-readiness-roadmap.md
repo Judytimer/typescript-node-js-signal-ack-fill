@@ -46,7 +46,7 @@ M2A 已定义 authoritative recovery evidence contract；当前仍只验证 evid
 
 每条正式记录必须具备真实 T0、归档的 T0 前 event evidence、带 interval 且 fresh 到 T0 的 vendor market data、预定义 outcome rule 和窗口结束后的可测量 outcome。`RECONSTRUCTED / MIXED` 输入不能升级为 FORMAL。当前 SEC X 案例只是方法论反例，不计入正式样本。
 
-FORMAL Case #1 已把候选选择规则实现为纯函数并完成 synthetic DEMO burn-in：在 FOMC release 后，用未修改的 MA(3,6) 找到第一个 actionable crossover（包括 HOLD/FLAT → LONG/SHORT），并要求发生在 18:30 Powell press conference 前；不存在则直接淘汰。Baseline Candidate Outcome 已冻结为 T0 entry 后持有 15 分钟，且结束时间必须严格早于下一 independent catalyst。该研究只覆盖 post-event 能产生 actionable crossover 的条件样本。当前结论为 `NOT ADMITTED`，因为仓库尚未保存并校验官方 event artifact 与原始 vendor candles；详见 [`formal-case-1-candidate-screen.md`](formal-case-1-candidate-screen.md)。
+FORMAL Case #1 已把候选选择规则实现为纯函数并完成 synthetic DEMO burn-in：在 FOMC release 后，用未修改的 MA(3,6) 找到第一个 actionable crossover（包括 HOLD/FLAT → LONG/SHORT），并要求发生在 18:30 Powell press conference 前；不存在则直接淘汰。Baseline Candidate Outcome 已冻结为 T0 close 零延迟 paper 成交、沿 crossover 方向持有 15 分钟，并以全局 ±50bps 阈值评分；结束时间必须严格早于下一 independent catalyst。该研究只覆盖 post-event 能产生 actionable crossover 的条件样本，本质是 mechanical momentum-chase comparison；ABSTAIN/WOULD_BLOCK 的优势可能来自“不追已有移动”，不能直接解释为 AI alpha 或 unconditional event performance。当前结论为 `NOT ADMITTED`，因为仓库尚未保存并校验官方 event artifact 与原始 vendor candles；详见 [`formal-case-1-candidate-screen.md`](formal-case-1-candidate-screen.md)。
 
 ### M4｜面试叙事与演示脚本
 

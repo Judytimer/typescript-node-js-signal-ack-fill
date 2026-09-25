@@ -6,6 +6,9 @@ import {
   freezeBaselineCandidateOutcome,
   freezeOutcomeHorizon,
   FORMAL_OUTCOME_HORIZON_MS,
+  FORMAL_OUTCOME_THRESHOLD_BPS,
+  FORMAL_REPLAY_PROTOCOL_VERSION,
+  scoreFormalBaselineOutcome,
   runHistoricalReplay
 } from "../src/historical-replay.ts";
 import type { HistoricalReplayCase } from "../src/historical-replay.ts";
@@ -184,12 +187,25 @@ test("freezes T0 entry and the 15-minute hold before the next independent cataly
     endsAt: 901_000,
     nextIndependentCatalystAt: 901_001,
     action: "LONG",
-    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE"
+    method: "T0_ENTRY_HOLD_TO_HORIZON_CLOSE",
+    executionAssumption: "ZERO_LATENCY_T0_CLOSE",
+    counterfactualUsesSameAssumption: true
   });
   assert.throws(
     () => freezeOutcomeHorizon(1_000, 901_000),
     /must end before the next independent catalyst/
   );
+});
+
+test("scores the globally frozen 50bps LONG and SHORT thresholds", () => {
+  assert.equal(FORMAL_REPLAY_PROTOCOL_VERSION, "1.0.0");
+  assert.equal(FORMAL_OUTCOME_THRESHOLD_BPS, 50);
+  assert.equal(scoreFormalBaselineOutcome("LONG", 100, 100.5).result, "SUCCESS");
+  assert.equal(scoreFormalBaselineOutcome("LONG", 100, 99.5).result, "FAILURE");
+  assert.equal(scoreFormalBaselineOutcome("LONG", 100, 100.49).result, "NEUTRAL");
+  assert.equal(scoreFormalBaselineOutcome("SHORT", 100, 99.5).result, "SUCCESS");
+  assert.equal(scoreFormalBaselineOutcome("SHORT", 100, 100.5).result, "FAILURE");
+  assert.equal(scoreFormalBaselineOutcome("SHORT", 100, 99.51).result, "NEUTRAL");
 });
 
 function replayCase(

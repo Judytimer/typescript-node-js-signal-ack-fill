@@ -18,7 +18,7 @@ simulateMarket
 
 订单生命周期由 `InFlightOrderTracker` 持有：成交路径为 `ACKED -> PARTIALLY_FILLED -> FILLED`；撤单路径为 `ACKED/PARTIALLY_FILLED -> CANCEL_REQUESTED -> CANCELED`。只有 `SimulatedExchange` 返回 `CancelAck` 后 tracker 才能确认 `CANCELED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
 
-第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平触发只使用 mark，index 目前仅代表外部参考输入；本模拟器没有实现交易所级 mark-price 推导。强平触发与执行已分开建模，但当前 paper simplification 仍假设 `liquidation execution price = mark price`，日志会同时记录 trigger mark 与 execution price。下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、取消本地在途订单并停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
+第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平触发只使用 mark，index 目前仅代表外部参考输入；本模拟器没有实现交易所级 mark-price 推导。强平触发与执行已分开建模，但当前 paper simplification 仍假设 `liquidation execution price = mark price`，日志会同时记录 trigger mark 与 execution price。下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、向 exchange 发起 cancel request，并在 CancelAck 后确认 `CANCELED`，然后停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
 
 第三轮加入版本化 checkpoint。ACK、有效 Fill 和模拟强平后会原子写入 `.runtime/perp-bot-state.json`，保存仓位、Fill 幂等集合、订单状态和下一模拟订单编号。正常完成的状态可恢复；如果重启时仍有 unresolved order，机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
 
@@ -36,7 +36,7 @@ npm run replay
 
 该命令输出 schema smoke fixture，以及第一个真实事件 replay：2024-01-09 SEC X 账号被入侵事件。Baseline LONG 由最小 candle fixture 经真实 `MovingAverageSignal(3,6)` 重放产生，不再手写；诊断显示第一条可计算的 LONG 在 21:11，但此前都处于 warm-up，因此不能证明消息触发了 crossover。加上 candle 是 reconstruction、原始消息没有由项目在 T0 归档、Shadow 也由事后重放，该案例仍为 `QUALITATIVE_ONLY / NOT_MEASURABLE`，并被 formal filter 排除。
 
-FORMAL candidate selection 使用纯函数寻找 event release 后、固定 cutoff 前的第一个 actionable MA crossover；HOLD/FLAT → LONG/SHORT 有效，warm-up 后的首个 signal 不算 crossover。Baseline Candidate Outcome 固定为 T0 entry 后持有 15 分钟，且结束时间必须严格早于下一 independent catalyst。样本仅研究 post-event 能产生 actionable crossover 的条件事件。当前这些规则只有 synthetic DEMO burn-in，尚未把缺失的 raw artifacts 包装成 FORMAL case。
+FORMAL candidate selection 使用纯函数寻找 event release 后、固定 cutoff 前的第一个 actionable MA crossover；HOLD/FLAT → LONG/SHORT 有效，warm-up 后的首个 signal 不算 crossover。Baseline Candidate Outcome 固定为 T0 close 零延迟 paper 成交后持有 15 分钟，并以方向收益 `±50bps` 判定 SUCCESS/FAILURE，中间为 NEUTRAL；结束时间必须严格早于下一 independent catalyst。Baseline 与 Shadow counterfactual 使用同一成交假设，不建模 slippage、next-open 或 order book。样本仅研究 post-event 能产生 actionable crossover 的条件事件，不能解释为 AI alpha 或 unconditional event performance。当前这些规则只有 synthetic DEMO burn-in，尚未把缺失的 raw artifacts 包装成 FORMAL case。
 
 ## 运行
 
