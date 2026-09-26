@@ -23,7 +23,7 @@ export function formatOverlayRisk(decision: OverlayRiskDecision): string {
 }
 
 export function formatOverlayAck(ack: OrderAck): string {
-  return `[OVERLAY_ACK] orderId=${ack.orderId} side=${ack.request.side} qty=${ack.request.qty} price=${ack.request.price}`;
+  return `[OVERLAY_ACK] clientOrderId=${ack.clientOrderId} exchangeOrderId=${ack.exchangeOrderId} side=${ack.request.side} qty=${ack.request.qty} price=${ack.request.price}`;
 }
 
 export function formatPending(orderId: string, order: OrderRequest): string {
@@ -31,7 +31,7 @@ export function formatPending(orderId: string, order: OrderRequest): string {
 }
 
 export function formatOverlayFill(fill: Fill): string {
-  return `[OVERLAY_FILL] fillId=${fill.fillId} orderId=${fill.orderId} side=${fill.side} qty=${fill.qty} price=${fill.price}`;
+  return `[OVERLAY_FILL] fillId=${fill.fillId} clientOrderId=${fill.clientOrderId} exchangeOrderId=${fill.exchangeOrderId} side=${fill.side} qty=${fill.qty} price=${fill.price}`;
 }
 
 export function formatOverlayPosition(position: PredictionPosition): string {

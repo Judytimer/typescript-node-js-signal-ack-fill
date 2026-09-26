@@ -30,15 +30,15 @@ export function formatRisk(decision: RiskDecision): string {
 }
 
 export function formatAck(ack: OrderAck): string {
-  return `[ACK] orderId=${ack.orderId} side=${ack.request.side} qty=${ack.request.qty} price=${ack.request.price}`;
+  return `[ACK] clientOrderId=${ack.clientOrderId} exchangeOrderId=${ack.exchangeOrderId} side=${ack.request.side} qty=${ack.request.qty} price=${ack.request.price}`;
 }
 
 export function formatCancelAck(ack: CancelAck): string {
-  return `[CANCEL_ACK] orderId=${ack.orderId} status=${ack.status} ts=${ack.ts}`;
+  return `[CANCEL_ACK] clientOrderId=${ack.clientOrderId} exchangeOrderId=${ack.exchangeOrderId} status=${ack.status} ts=${ack.ts}`;
 }
 
 export function formatFill(fill: Fill): string {
-  return `[FILL] fillId=${fill.fillId} orderId=${fill.orderId} side=${fill.side} qty=${fill.qty} price=${fill.price} fee=${fill.fee.toFixed(
+  return `[FILL] fillId=${fill.fillId} clientOrderId=${fill.clientOrderId} exchangeOrderId=${fill.exchangeOrderId} side=${fill.side} qty=${fill.qty} price=${fill.price} fee=${fill.fee.toFixed(
     4
   )}`;
 }
@@ -48,7 +48,7 @@ export function formatFunding(settlement: FundingSettlement, payment: number): s
 }
 
 export function formatOrderState(order: InFlightOrder): string {
-  return `[ORDER] orderId=${order.orderId} status=${order.status} filled=${order.filledQty} remaining=${order.remainingQty}`;
+  return `[ORDER] clientOrderId=${order.clientOrderId} exchangeOrderId=${order.exchangeOrderId ?? "pending"} status=${order.status} filled=${order.filledQty} remaining=${order.remainingQty}`;
 }
 
 export function formatAccount(snapshot: MarginSnapshot): string {

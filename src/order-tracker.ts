@@ -1,7 +1,8 @@
 import { round } from "./math.ts";
-import type { CancelAck, Fill, OrderAck, OrderSide } from "./types.ts";
+import type { CancelAck, Fill, OrderAck, OrderRequest, OrderSide } from "./types.ts";
 
 export type InFlightOrderStatus =
+  | "SUBMITTED"
   | "ACKED"
   | "PARTIALLY_FILLED"
   | "CANCEL_REQUESTED"
@@ -9,7 +10,8 @@ export type InFlightOrderStatus =
   | "CANCELED";
 
 export type InFlightOrder = {
-  orderId: string;
+  clientOrderId: string;
+  exchangeOrderId: string | null;
   side: OrderSide;
   originalQty: number;
   filledQty: number;
@@ -17,24 +19,13 @@ export type InFlightOrder = {
   status: InFlightOrderStatus;
 };
 
-export type FillProcessResult = {
-  accepted: boolean;
-  order: InFlightOrder;
-};
-
-type TrackedOrder = {
+export type FillProcessResult = { accepted: boolean; order: InFlightOrder };
+type TrackedOrder = { order: InFlightOrder; symbol: string; processedFillIds: Set<string> };
+export type OrderTrackerState = { orders: Array<{
   order: InFlightOrder;
   symbol: string;
-  processedFillIds: Set<string>;
-};
-
-export type OrderTrackerState = {
-  orders: Array<{
-    order: InFlightOrder;
-    symbol: string;
-    processedFillIds: string[];
-  }>;
-};
+  processedFillIds: string[];
+}> };
 
 export class InFlightOrderTracker {
   private readonly orders = new Map<string, TrackedOrder>();
@@ -42,12 +33,11 @@ export class InFlightOrderTracker {
   static fromState(state: OrderTrackerState): InFlightOrderTracker {
     const tracker = new InFlightOrderTracker();
     for (const item of state.orders) {
-      if (tracker.orders.has(item.order.orderId)) {
-        throw new Error(`duplicate restored order ${item.order.orderId}`);
+      if (tracker.orders.has(item.order.clientOrderId)) {
+        throw new Error(`duplicate restored order ${item.order.clientOrderId}`);
       }
-      tracker.orders.set(item.order.orderId, {
-        order: { ...item.order },
-        symbol: item.symbol,
+      tracker.orders.set(item.order.clientOrderId, {
+        order: { ...item.order }, symbol: item.symbol,
         processedFillIds: new Set(item.processedFillIds)
       });
     }
@@ -55,74 +45,58 @@ export class InFlightOrderTracker {
   }
 
   exportState(): OrderTrackerState {
-    return {
-      orders: [...this.orders.values()].map((tracked) => ({
-        order: { ...tracked.order },
-        symbol: tracked.symbol,
-        processedFillIds: [...tracked.processedFillIds]
-      }))
-    };
+    return { orders: [...this.orders.values()].map((tracked) => ({
+      order: { ...tracked.order }, symbol: tracked.symbol,
+      processedFillIds: [...tracked.processedFillIds]
+    })) };
   }
 
-  trackAck(ack: OrderAck): InFlightOrder {
-    if (this.orders.has(ack.orderId)) {
-      throw new Error(`order ${ack.orderId} is already tracked`);
-    }
-
+  trackSubmission(clientOrderId: string, request: OrderRequest): InFlightOrder {
+    if (this.orders.has(clientOrderId)) throw new Error(`order ${clientOrderId} is already tracked`);
     const order: InFlightOrder = {
-      orderId: ack.orderId,
-      side: ack.request.side,
-      originalQty: ack.request.qty,
-      filledQty: 0,
-      remainingQty: ack.request.qty,
-      status: "ACKED"
+      clientOrderId, exchangeOrderId: null, side: request.side,
+      originalQty: request.qty, filledQty: 0, remainingQty: request.qty, status: "SUBMITTED"
     };
-    this.orders.set(ack.orderId, {
-      order,
-      symbol: ack.request.symbol,
-      processedFillIds: new Set<string>()
-    });
+    this.orders.set(clientOrderId, { order, symbol: request.symbol, processedFillIds: new Set() });
     return { ...order };
   }
 
+  processAck(ack: OrderAck): InFlightOrder {
+    const tracked = this.require(ack.clientOrderId);
+    if (tracked.order.status !== "SUBMITTED") {
+      throw new Error(`order ${ack.clientOrderId} is not awaiting acknowledgment`);
+    }
+    if (ack.request.symbol !== tracked.symbol || ack.request.side !== tracked.order.side ||
+        ack.request.qty !== tracked.order.originalQty) {
+      throw new Error(`acknowledgment does not match order ${ack.clientOrderId}`);
+    }
+    tracked.order = { ...tracked.order, exchangeOrderId: ack.exchangeOrderId, status: "ACKED" };
+    return { ...tracked.order };
+  }
+
   processFill(fill: Fill): FillProcessResult {
-    const tracked = this.orders.get(fill.orderId);
-    if (tracked === undefined) {
-      throw new Error(`fill ${fill.fillId} belongs to unknown order ${fill.orderId}`);
-    }
-
-    if (tracked.order.status === "CANCELED") {
-      return { accepted: false, order: { ...tracked.order } };
-    }
-
-    if (tracked.processedFillIds.has(fill.fillId)) {
-      return { accepted: false, order: { ...tracked.order } };
-    }
-
-    if (fill.symbol !== tracked.symbol || fill.side !== tracked.order.side) {
-      throw new Error(`fill ${fill.fillId} does not match order ${fill.orderId}`);
+    const tracked = this.require(fill.clientOrderId);
+    if (tracked.order.status === "CANCELED") return { accepted: false, order: { ...tracked.order } };
+    if (tracked.processedFillIds.has(fill.fillId)) return { accepted: false, order: { ...tracked.order } };
+    if (tracked.order.exchangeOrderId !== fill.exchangeOrderId || fill.symbol !== tracked.symbol ||
+        fill.side !== tracked.order.side) {
+      throw new Error(`fill ${fill.fillId} does not match order ${fill.clientOrderId}`);
     }
     if (fill.qty <= 0 || fill.qty > tracked.order.remainingQty) {
       throw new Error(`fill ${fill.fillId} exceeds remaining quantity`);
     }
-
     const filledQty = round(tracked.order.filledQty + fill.qty);
     const remainingQty = round(tracked.order.originalQty - filledQty);
-    tracked.order = {
-      ...tracked.order,
-      filledQty,
-      remainingQty,
-      status: remainingQty === 0 ? "FILLED" : "PARTIALLY_FILLED"
-    };
+    tracked.order = { ...tracked.order, filledQty, remainingQty,
+      status: remainingQty === 0 ? "FILLED" : "PARTIALLY_FILLED" };
     tracked.processedFillIds.add(fill.fillId);
-
     return { accepted: true, order: { ...tracked.order } };
   }
 
   requestCancelOpenOrders(): InFlightOrder[] {
     const requested: InFlightOrder[] = [];
     for (const tracked of this.orders.values()) {
-      if (tracked.order.status === "ACKED" || tracked.order.status === "PARTIALLY_FILLED") {
+      if (["ACKED", "PARTIALLY_FILLED"].includes(tracked.order.status)) {
         tracked.order = { ...tracked.order, status: "CANCEL_REQUESTED" };
         requested.push({ ...tracked.order });
       }
@@ -131,31 +105,31 @@ export class InFlightOrderTracker {
   }
 
   processCancelAck(ack: CancelAck): InFlightOrder {
-    const tracked = this.orders.get(ack.orderId);
-    if (tracked === undefined) {
-      throw new Error(`cancel acknowledgment belongs to unknown order ${ack.orderId}`);
-    }
+    const tracked = this.require(ack.clientOrderId);
     if (tracked.order.status !== "CANCEL_REQUESTED") {
-      throw new Error(`order ${ack.orderId} is not awaiting cancel confirmation`);
+      throw new Error(`order ${ack.clientOrderId} is not awaiting cancel confirmation`);
     }
-
+    if (tracked.order.exchangeOrderId !== ack.exchangeOrderId) {
+      throw new Error(`cancel acknowledgment does not match order ${ack.clientOrderId}`);
+    }
     tracked.order = { ...tracked.order, status: "CANCELED" };
     return { ...tracked.order };
   }
 
-  get(orderId: string): InFlightOrder | undefined {
-    const tracked = this.orders.get(orderId);
+  get(clientOrderId: string): InFlightOrder | undefined {
+    const tracked = this.orders.get(clientOrderId);
     return tracked === undefined ? undefined : { ...tracked.order };
   }
 
   getOpenOrders(): InFlightOrder[] {
     return [...this.orders.values()]
-      .filter(
-        (tracked) =>
-          tracked.order.status === "ACKED" ||
-          tracked.order.status === "PARTIALLY_FILLED" ||
-          tracked.order.status === "CANCEL_REQUESTED"
-      )
-      .map((tracked) => ({ ...tracked.order }));
+      .filter(({ order }) => ["SUBMITTED", "ACKED", "PARTIALLY_FILLED", "CANCEL_REQUESTED"].includes(order.status))
+      .map(({ order }) => ({ ...order }));
+  }
+
+  private require(clientOrderId: string): TrackedOrder {
+    const tracked = this.orders.get(clientOrderId);
+    if (tracked === undefined) throw new Error(`event belongs to unknown order ${clientOrderId}`);
+    return tracked;
   }
 }

@@ -2,74 +2,65 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { SimulatedExchange } from "../src/exchange.ts";
-import { InFlightOrderTracker } from "../src/order-tracker.ts";
+import type { ExecutionEvent } from "../src/types.ts";
 
-test("continues simulated order ids from a restored sequence", () => {
+test("submit result is decoupled from a later execution event", async () => {
+  const exchange = new SimulatedExchange(20);
+  const events: ExecutionEvent[] = [];
+  exchange.onExecutionEvent((event) => events.push(event));
+
+  const ack = await exchange.submit(command("CLIENT-1"));
+
+  assert.equal(ack.clientOrderId, "CLIENT-1");
+  assert.equal(ack.exchangeOrderId, "SIM-1");
+  assert.deepEqual(events.map((event) => event.type), ["ORDER_ACK"]);
+  await exchange.drain();
+  assert.deepEqual(events.map((event) => event.type), ["ORDER_ACK", "FILL"]);
+});
+
+test("client identity exists before the venue assigns its identity", async () => {
   const exchange = new SimulatedExchange(1);
-  exchange.restoreNextOrderId(8);
+  const seen: ExecutionEvent[] = [];
+  exchange.onExecutionEvent((event) => seen.push(event));
+  const submitted = command("OWNED-BEFORE-SUBMIT");
 
-  const submitted = exchange.submit({
-    symbol: "BTC-PERP",
-    side: "BUY",
-    qty: 0.01,
-    price: 100,
-    reason: "test",
-    ts: 1
-  });
-
-  assert.equal(submitted.ack.orderId, "SIM-8");
-  assert.equal(exchange.getNextOrderId(), 9);
+  assert.equal(submitted.clientOrderId, "OWNED-BEFORE-SUBMIT");
+  const ack = await exchange.submit(submitted);
+  assert.equal(ack.clientOrderId, submitted.clientOrderId);
+  assert.equal(ack.exchangeOrderId, "SIM-1");
+  await exchange.drain();
+  assert.equal(seen[1]?.type === "FILL" && seen[1].fill.clientOrderId, submitted.clientOrderId);
 });
 
-test("exchange cancel acknowledgment prevents an unexecuted fill", async () => {
+test("cancel acknowledgment is an event and suppresses an unexecuted fill", async () => {
   const exchange = new SimulatedExchange(30);
-  const submitted = exchange.submit(order());
+  const events: ExecutionEvent[] = [];
+  exchange.onExecutionEvent((event) => events.push(event));
+  await exchange.submit(command("CLIENT-1"));
 
-  const cancelAck = await exchange.requestCancel(submitted.ack.orderId);
+  await exchange.requestCancel("CLIENT-1");
+  await exchange.drain();
 
-  assert.deepEqual(cancelAck, {
-    orderId: submitted.ack.orderId,
-    status: "CANCELED",
-    ts: cancelAck.ts
-  });
-  assert.equal(await submitted.fills[0], null);
+  assert.deepEqual(events.map((event) => event.type), ["ORDER_ACK", "CANCEL_ACK"]);
 });
 
-test("partial fill remains recorded when exchange cancels only the remainder", async () => {
+test("partial fill remains authoritative when cancel suppresses only the remainder", async () => {
   const exchange = new SimulatedExchange(1, 0, [
-    { fraction: 0.4, delayMs: 1 },
-    { fraction: 0.6, delayMs: 40 }
+    { fraction: 0.4, delayMs: 1 }, { fraction: 0.6, delayMs: 40 }
   ]);
-  const tracker = new InFlightOrderTracker();
-  const submitted = exchange.submit(order());
-  tracker.trackAck(submitted.ack);
+  const events: ExecutionEvent[] = [];
+  exchange.onExecutionEvent((event) => events.push(event));
+  await exchange.submit(command("CLIENT-1"));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await exchange.requestCancel("CLIENT-1");
+  await exchange.drain();
 
-  const firstFill = await submitted.fills[0];
-  assert.notEqual(firstFill, null);
-  tracker.processFill(firstFill!);
-
-  tracker.requestCancelOpenOrders();
-  const cancelAck = await exchange.requestCancel(submitted.ack.orderId);
-  tracker.processCancelAck(cancelAck);
-
-  assert.equal(await submitted.fills[1], null);
-  assert.deepEqual(tracker.get(submitted.ack.orderId), {
-    orderId: submitted.ack.orderId,
-    side: "BUY",
-    originalQty: 0.01,
-    filledQty: 0.004,
-    remainingQty: 0.006,
-    status: "CANCELED"
-  });
+  assert.deepEqual(events.map((event) => event.type), ["ORDER_ACK", "FILL", "CANCEL_ACK"]);
+  assert.equal(events[1]?.type === "FILL" && events[1].fill.qty, 0.004);
 });
 
-function order() {
-  return {
-    symbol: "BTC-PERP",
-    side: "BUY" as const,
-    qty: 0.01,
-    price: 100,
-    reason: "test",
-    ts: 1
-  };
+function command(clientOrderId: string) {
+  return { clientOrderId, request: {
+    symbol: "BTC-PERP", side: "BUY" as const, qty: 0.01, price: 100, reason: "test", ts: 1
+  } };
 }

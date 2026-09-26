@@ -1,5 +1,4 @@
-import { SimulatedExchange } from "./exchange.ts";
-import type { FillDelay, FillPlanStep } from "./exchange.ts";
+import type { ExecutionVenue } from "./exchange.ts";
 import {
   formatAck,
   formatAccount,
@@ -20,7 +19,7 @@ import { MovingAverageSignal } from "./strategy.ts";
 import { round } from "./math.ts";
 import { IsolatedMarginAccount } from "./margin.ts";
 import type { MarginConfig, MarginSnapshot } from "./margin.ts";
-import type { FundingSettlement, Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
+import type { ExecutionEvent, FundingSettlement, Logger, OrderRequest, Position, PositionSide, Tick } from "./types.ts";
 import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
 import { PaperLiquidationExecutor } from "./liquidation.ts";
 import { reconcileState } from "./reconciliation.ts";
@@ -32,8 +31,7 @@ export type BotConfig = {
   longWindow: number;
   orderQty: number;
   maxAbsPosition: number;
-  fillDelayMs: FillDelay;
-  fillPlan?: readonly FillPlanStep[];
+  venue: ExecutionVenue;
   margin?: MarginConfig;
   stateStore?: BotStateStore;
   logger?: Logger;
@@ -42,10 +40,9 @@ export type BotConfig = {
 export class PerpBot {
   private readonly strategy: MovingAverageSignal;
   private readonly risk: RiskManager;
-  private readonly exchange: SimulatedExchange;
+  private readonly venue: ExecutionVenue;
   private positions: PositionBook;
   private readonly logger: Logger;
-  private readonly pendingFills: Promise<void>[] = [];
   private orderTracker = new InFlightOrderTracker();
   private readonly margin: IsolatedMarginAccount;
   private readonly liquidationExecutor = new PaperLiquidationExecutor();
@@ -55,6 +52,8 @@ export class PerpBot {
   private recoveryRequired = false;
   private readonly stateStore?: BotStateStore;
   private persistTail: Promise<void> = Promise.resolve();
+  private nextClientOrderSequence = 1;
+  private readonly cancelConfirmations = new Map<string, () => void>();
 
   constructor(config: BotConfig) {
     this.strategy = new MovingAverageSignal(config.shortWindow, config.longWindow);
@@ -62,13 +61,14 @@ export class PerpBot {
       orderQty: config.orderQty,
       maxAbsPosition: config.maxAbsPosition
     });
-    this.exchange = new SimulatedExchange(config.fillDelayMs, 0.0004, config.fillPlan);
+    this.venue = config.venue;
     this.positions = new PositionBook(config.symbol);
     this.margin = new IsolatedMarginAccount(
       config.margin ?? { collateral: 10_000, leverage: 5, maintenanceMarginRate: 0.005 }
     );
     this.logger = config.logger ?? console.log;
     this.stateStore = config.stateStore;
+    this.venue.onExecutionEvent((event) => this.onExecutionEvent(event));
   }
 
   static async create(config: BotConfig): Promise<PerpBot> {
@@ -131,37 +131,12 @@ export class PerpBot {
       `[MARGIN_RISK] approved requiredInitialMargin=${postOrderAccount.initialMargin} equity=${this.lastAccountSnapshot.equity}`
     );
 
-    const submitted = this.exchange.submit(decision.order);
-    this.orderTracker.trackAck(submitted.ack);
-    this.logger(formatAck(submitted.ack));
+    const clientOrderId = `${configSafeSymbol(decision.order.symbol)}-${this.nextClientOrderSequence++}`;
+    this.orderTracker.trackSubmission(clientOrderId, decision.order);
+    // Persist client-owned identity before sending. A crash after this point remains unresolved,
+    // rather than being incorrectly treated as proof that no venue order exists.
     await this.persist();
-
-    const fillTasks = submitted.fills.map((fillPromise) =>
-      fillPromise.then(async (fill) => {
-        if (fill === null) {
-          return;
-        }
-        this.logger(formatFill(fill));
-        const result = this.orderTracker.processFill(fill);
-        this.logger(formatOrderState(result.order));
-        if (!result.accepted) {
-          return;
-        }
-        const position = this.positions.applyFill(fill);
-        this.logger(formatPosition(position));
-        // A trade fill changes the position, but it does not own the market mark.
-        this.lastAccountSnapshot = this.margin.snapshot(position, this.requireLatestMarkPrice());
-        this.logger(formatAccount(this.lastAccountSnapshot));
-        await this.persist();
-      })
-    );
-
-    this.pendingFills.push(...fillTasks);
-  }
-
-  async waitForIdle(): Promise<void> {
-    await Promise.all(this.pendingFills);
-    await this.persistTail;
+    await this.venue.submit({ clientOrderId, request: decision.order });
   }
 
   async onFunding(settlement: FundingSettlement): Promise<void> {
@@ -199,10 +174,11 @@ export class PerpBot {
   private async liquidate(position: Position, tick: Tick, snapshot: MarginSnapshot): Promise<void> {
     for (const cancelRequested of this.orderTracker.requestCancelOpenOrders()) {
       this.logger(formatOrderState(cancelRequested));
-      const cancelAck = await this.exchange.requestCancel(cancelRequested.orderId);
-      this.logger(formatCancelAck(cancelAck));
-      const canceled = this.orderTracker.processCancelAck(cancelAck);
-      this.logger(formatOrderState(canceled));
+      const confirmed = new Promise<void>((resolve) => {
+        this.cancelConfirmations.set(cancelRequested.clientOrderId, resolve);
+      });
+      await this.venue.requestCancel(cancelRequested.clientOrderId);
+      await confirmed;
     }
 
     const execution = this.liquidationExecutor.execute(position, tick);
@@ -240,7 +216,7 @@ export class PerpBot {
 
     this.positions = PositionBook.fromState(checkpoint.positionState);
     this.orderTracker = InFlightOrderTracker.fromState(checkpoint.orderTrackerState);
-    this.exchange.restoreNextOrderId(checkpoint.nextOrderId);
+    this.nextClientOrderSequence = checkpoint.nextClientOrderSequence;
     this.halted = checkpoint.halted;
     this.recoveryRequired = this.orderTracker.getOpenOrders().length > 0;
     if (checkpoint.lastMarkPrice !== null) {
@@ -248,7 +224,7 @@ export class PerpBot {
       this.lastAccountSnapshot = this.margin.snapshot(this.positions.get(), checkpoint.lastMarkPrice);
     }
     this.logger(
-      `[RECOVERY] restored position=${this.positions.get().side} openOrders=${this.orderTracker.getOpenOrders().length} nextOrderId=${checkpoint.nextOrderId}`
+      `[RECOVERY] restored position=${this.positions.get().side} openOrders=${this.orderTracker.getOpenOrders().length} nextClientOrderSequence=${checkpoint.nextClientOrderSequence}`
     );
   }
 
@@ -266,11 +242,43 @@ export class PerpBot {
       symbol: this.positions.get().symbol,
       positionState: this.positions.exportState(),
       orderTrackerState: this.orderTracker.exportState(),
-      nextOrderId: this.exchange.getNextOrderId(),
+      nextClientOrderSequence: this.nextClientOrderSequence,
       halted: this.halted,
       lastMarkPrice: this.lastAccountSnapshot?.markPrice ?? null
     };
   }
+
+  private async onExecutionEvent(event: ExecutionEvent): Promise<void> {
+    if (event.type === "ORDER_ACK") {
+      const order = this.orderTracker.processAck(event.ack);
+      this.logger(formatAck(event.ack));
+      this.logger(formatOrderState(order));
+      await this.persist();
+      return;
+    }
+    if (event.type === "CANCEL_ACK") {
+      this.logger(formatCancelAck(event.ack));
+      this.logger(formatOrderState(this.orderTracker.processCancelAck(event.ack)));
+      await this.persist();
+      this.cancelConfirmations.get(event.ack.clientOrderId)?.();
+      this.cancelConfirmations.delete(event.ack.clientOrderId);
+      return;
+    }
+    const fill = event.fill;
+    this.logger(formatFill(fill));
+    const result = this.orderTracker.processFill(fill);
+    this.logger(formatOrderState(result.order));
+    if (!result.accepted) return;
+    const position = this.positions.applyFill(fill);
+    this.logger(formatPosition(position));
+    this.lastAccountSnapshot = this.margin.snapshot(position, this.requireLatestMarkPrice());
+    this.logger(formatAccount(this.lastAccountSnapshot));
+    await this.persist();
+  }
+}
+
+function configSafeSymbol(symbol: string): string {
+  return symbol.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 function validateTickPrices(tick: Tick): void {
