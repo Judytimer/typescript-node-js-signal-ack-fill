@@ -30,22 +30,31 @@ export type OrderRequest = {
   ts: number;
 };
 
+export type SubmitOrderCommand = {
+  /** Generated and persisted by the client before the command crosses the venue boundary. */
+  clientOrderId: string;
+  request: OrderRequest;
+};
+
 export type OrderAck = {
-  orderId: string;
+  clientOrderId: string;
+  exchangeOrderId: string;
   status: "ACKED";
   request: OrderRequest;
   ts: number;
 };
 
 export type CancelAck = {
-  orderId: string;
+  clientOrderId: string;
+  exchangeOrderId: string;
   status: "CANCELED";
   ts: number;
 };
 
 export type Fill = {
   fillId: string;
-  orderId: string;
+  clientOrderId: string;
+  exchangeOrderId: string;
   symbol: string;
   side: OrderSide;
   qty: number;
@@ -53,6 +62,11 @@ export type Fill = {
   fee: number;
   ts: number;
 };
+
+export type ExecutionEvent =
+  | { type: "ORDER_ACK"; ack: OrderAck }
+  | { type: "FILL"; fill: Fill }
+  | { type: "CANCEL_ACK"; ack: CancelAck };
 
 export type FundingSettlement = {
   fundingId: string;

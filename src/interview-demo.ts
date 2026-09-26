@@ -1,4 +1,6 @@
 import { PerpBot } from "./bot.ts";
+import { SimulatedExchange } from "./exchange.ts";
+import type { FillDelay, FillPlanStep } from "./exchange.ts";
 import type { BotCheckpoint, BotStateStore } from "./state-store.ts";
 import type { Tick } from "./types.ts";
 
@@ -6,10 +8,11 @@ type DemoSection = {
   title: string;
   lines: string[];
 };
+const venues = new WeakMap<PerpBot, SimulatedExchange>();
 
 async function lifecycleSection(): Promise<DemoSection> {
   const logs: string[] = [];
-  const bot = new PerpBot({
+  const bot = makeBot({
     symbol: "BTC-PERP",
     shortWindow: 2,
     longWindow: 4,
@@ -26,7 +29,7 @@ async function lifecycleSection(): Promise<DemoSection> {
   for (const [index, price] of [100, 101, 102, 103].entries()) {
     await bot.onTick(tick(index + 1, price));
   }
-  await bot.waitForIdle();
+  await drain(bot);
 
   return {
     title: "Signal -> Risk -> ACK -> Partial Fill -> Position",
@@ -36,7 +39,7 @@ async function lifecycleSection(): Promise<DemoSection> {
 
 async function liquidationCancelSection(): Promise<DemoSection> {
   const logs: string[] = [];
-  const bot = new PerpBot({
+  const bot = makeBot({
     symbol: "BTC-PERP",
     shortWindow: 2,
     longWindow: 4,
@@ -50,10 +53,10 @@ async function liquidationCancelSection(): Promise<DemoSection> {
   for (const [index, price] of [100, 101, 102, 103].entries()) {
     await bot.onTick(tick(index + 1, price));
   }
-  await bot.waitForIdle();
+  await drain(bot);
   await bot.onTick(tick(5, 80, 103, 100));
   await bot.onTick(tick(6, 80, 90, 95));
-  await bot.waitForIdle();
+  await drain(bot);
 
   return {
     title: "Cancel Intent -> CancelAck -> Liquidation",
@@ -63,7 +66,7 @@ async function liquidationCancelSection(): Promise<DemoSection> {
 
 async function recoverySection(): Promise<DemoSection> {
   const logs: string[] = [];
-  const bot = await PerpBot.create({
+  const bot = await createBot({
     symbol: "BTC-PERP",
     shortWindow: 2,
     longWindow: 4,
@@ -120,7 +123,8 @@ function unresolvedCheckpoint(): BotCheckpoint {
       orders: [
         {
           order: {
-            orderId: "SIM-1",
+            clientOrderId: "BTC-PERP-1",
+            exchangeOrderId: "SIM-1",
             side: "BUY",
             originalQty: 0.01,
             filledQty: 0,
@@ -132,7 +136,7 @@ function unresolvedCheckpoint(): BotCheckpoint {
         }
       ]
     },
-    nextOrderId: 2,
+    nextClientOrderSequence: 2,
     halted: false,
     lastMarkPrice: 100
   };
@@ -150,3 +154,17 @@ for (const section of sections) {
     console.log(line);
   }
 }
+
+
+type DemoConfig = Omit<ConstructorParameters<typeof PerpBot>[0], "venue"> & { fillDelayMs: FillDelay; fillPlan?: readonly FillPlanStep[] };
+function makeBot(config: DemoConfig): PerpBot {
+  const { fillDelayMs, fillPlan, ...core } = config;
+  const venue = new SimulatedExchange(fillDelayMs, 0.0004, fillPlan);
+  const bot = new PerpBot({ ...core, venue }); venues.set(bot, venue); return bot;
+}
+async function createBot(config: DemoConfig): Promise<PerpBot> {
+  const { fillDelayMs, fillPlan, ...core } = config;
+  const venue = new SimulatedExchange(fillDelayMs, 0.0004, fillPlan);
+  const bot = await PerpBot.create({ ...core, venue }); venues.set(bot, venue); return bot;
+}
+async function drain(bot: PerpBot): Promise<void> { await venues.get(bot)?.drain(); }

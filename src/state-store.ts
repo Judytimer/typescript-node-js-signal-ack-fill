@@ -9,7 +9,7 @@ export type BotCheckpoint = {
   symbol: string;
   positionState: PositionBookState;
   orderTrackerState: OrderTrackerState;
-  nextOrderId: number;
+  nextClientOrderSequence: number;
   halted: boolean;
   lastMarkPrice: number | null;
 };
@@ -71,8 +71,8 @@ function validateCheckpoint(value: unknown): BotCheckpoint {
     typeof value.symbol !== "string" ||
     !isPositionState(value.positionState) ||
     !isOrderTrackerState(value.orderTrackerState) ||
-    !Number.isInteger(value.nextOrderId) ||
-    (value.nextOrderId as number) < 1 ||
+    !Number.isInteger(value.nextClientOrderSequence) ||
+    (value.nextClientOrderSequence as number) < 1 ||
     typeof value.halted !== "boolean" ||
     (value.lastMarkPrice !== null &&
       (typeof value.lastMarkPrice !== "number" ||
@@ -112,12 +112,13 @@ function isOrderTrackerState(value: unknown): boolean {
     const order = item.order;
     return (
       typeof item.symbol === "string" &&
-      typeof order.orderId === "string" &&
+      typeof order.clientOrderId === "string" &&
+      (order.exchangeOrderId === null || typeof order.exchangeOrderId === "string") &&
       (order.side === "BUY" || order.side === "SELL") &&
       isNonNegativeNumber(order.originalQty) &&
       isNonNegativeNumber(order.filledQty) &&
       isNonNegativeNumber(order.remainingQty) &&
-      ["ACKED", "PARTIALLY_FILLED", "CANCEL_REQUESTED", "FILLED", "CANCELED"].includes(
+      ["SUBMITTED", "ACKED", "PARTIALLY_FILLED", "CANCEL_REQUESTED", "FILLED", "CANCELED"].includes(
         String(order.status)
       )
     );

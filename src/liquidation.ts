@@ -19,7 +19,8 @@ export class PaperLiquidationExecutor {
     const side = position.side === "LONG" ? "SELL" : "BUY";
     const fill: Fill = {
       fillId: `LIQ-${tick.seq}-FILL-1`,
-      orderId: `LIQ-${tick.seq}`,
+      clientOrderId: `LIQ-${tick.seq}`,
+      exchangeOrderId: `PAPER-LIQ-${tick.seq}`,
       symbol: position.symbol,
       side,
       qty: position.qty,

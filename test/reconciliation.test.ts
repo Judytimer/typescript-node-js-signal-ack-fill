@@ -71,7 +71,8 @@ function position(side: Position["side"], qty: number): Position {
 
 function openOrder(orderId: string, remainingQty: number): InFlightOrder {
   return {
-    orderId,
+    clientOrderId: orderId,
+    exchangeOrderId: `VENUE-${orderId}`,
     side: "BUY",
     originalQty: 0.01,
     filledQty: 0.01 - remainingQty,

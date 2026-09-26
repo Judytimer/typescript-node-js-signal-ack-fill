@@ -93,7 +93,8 @@ test("funding debits longs, credits shorts, and is idempotent", () => {
 function fill(orderId: string, side: Fill["side"], qty: number): Fill {
   return {
     fillId: `${orderId}-FILL-1`,
-    orderId,
+    clientOrderId: orderId,
+    exchangeOrderId: orderId,
     symbol: "BTC-PERP",
     side,
     qty,

@@ -1,7 +1,7 @@
 import { SimulatedExchange } from "../exchange.ts";
 import type { FillDelay } from "../exchange.ts";
 import { round } from "../math.ts";
-import type { Logger, OrderRequest } from "../types.ts";
+import type { ExecutionEvent, Logger, OrderRequest } from "../types.ts";
 import {
   formatOverlayAck,
   formatOverlayFill,
@@ -30,7 +30,7 @@ export class MemePredictionOverlayBot {
   private readonly exchange: SimulatedExchange;
   private readonly logger: Logger;
   private readonly pendingOrders = new Map<string, OrderRequest>();
-  private readonly pendingFills: Promise<void>[] = [];
+  private nextClientOrderId = 1;
   private positionBook: PredictionPositionBook | null = null;
 
   constructor(config: MemePredictionOverlayBotConfig) {
@@ -38,6 +38,7 @@ export class MemePredictionOverlayBot {
     this.risk = new OverlayRiskManager({ maxRiskBudget: config.maxRiskBudget });
     this.exchange = new SimulatedExchange(config.fillDelayMs);
     this.logger = config.logger ?? console.log;
+    this.exchange.onExecutionEvent((event) => this.onExecutionEvent(event));
   }
 
   async onSnapshot(snapshot: ResearchSnapshot): Promise<void> {
@@ -60,26 +61,14 @@ export class MemePredictionOverlayBot {
       return;
     }
 
-    const submitted = this.exchange.submit(decision.order);
-    this.pendingOrders.set(submitted.ack.orderId, submitted.ack.request);
-    this.logger(formatOverlayAck(submitted.ack));
-    this.logger(formatPending(submitted.ack.orderId, submitted.ack.request));
-
-    const fillTasks = submitted.fills.map((fillPromise, index) =>
-      fillPromise.then((fill) => {
-        this.logger(formatOverlayFill(fill));
-        if (index === submitted.fills.length - 1) {
-          this.pendingOrders.delete(fill.orderId);
-        }
-        const position = this.positionBook!.applyFill(fill);
-        this.logger(formatOverlayPosition(position));
-      })
-    );
-    this.pendingFills.push(...fillTasks);
+    const clientOrderId = `OVERLAY-${this.nextClientOrderId++}`;
+    this.pendingOrders.set(clientOrderId, decision.order);
+    this.logger(formatPending(clientOrderId, decision.order));
+    await this.exchange.submit({ clientOrderId, request: decision.order });
   }
 
   async waitForIdle(): Promise<void> {
-    await Promise.all(this.pendingFills);
+    await this.exchange.drain();
   }
 
   getPosition(): PredictionPosition {
@@ -95,5 +84,17 @@ export class MemePredictionOverlayBot {
       shares += order.side === "BUY" ? order.qty : -order.qty;
     }
     return round(shares, 6);
+  }
+
+  private onExecutionEvent(event: ExecutionEvent): void {
+    if (event.type === "ORDER_ACK") {
+      this.logger(formatOverlayAck(event.ack));
+      return;
+    }
+    if (event.type !== "FILL") return;
+    this.logger(formatOverlayFill(event.fill));
+    this.pendingOrders.delete(event.fill.clientOrderId);
+    const position = this.positionBook!.applyFill(event.fill);
+    this.logger(formatOverlayPosition(position));
   }
 }

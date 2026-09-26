@@ -8,19 +8,21 @@
 simulateMarket
   -> MovingAverageSignal
   -> RiskManager
-  -> SimulatedExchange ACK
-  -> delayed FILL
-  -> PositionBook
+  -> ExecutionVenue command (submit / cancel)
+
+ExecutionVenue event callback
+  -> ACK / delayed FILL / CancelAck
+  -> InFlightOrderTracker / PositionBook
   -> console logs
 ```
 
-风控使用 `已成交 Position + 已 ACK 未 Fill 的 Pending Orders` 计算预计仓位，避免 Fill 延迟期间重复下单。Pending 以 `orderId` 关联，因此模拟 Fill 乱序时仍能删除正确的在途订单。
+风控使用 `已成交 Position + unresolved Orders` 计算预计仓位，避免 Fill 延迟期间重复下单。Core 在 submit 前生成并跟踪 `clientOrderId`；adapter 后续提供独立的 `exchangeOrderId`。命令结果不携带 future Fill，Fill/CancelAck 只通过 execution event callback 进入状态机。
 
-订单生命周期由 `InFlightOrderTracker` 持有：成交路径为 `ACKED -> PARTIALLY_FILLED -> FILLED`；撤单路径为 `ACKED/PARTIALLY_FILLED -> CANCEL_REQUESTED -> CANCELED`。只有 `SimulatedExchange` 返回 `CancelAck` 后 tracker 才能确认 `CANCELED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
+订单生命周期由 `InFlightOrderTracker` 持有：成交路径为 `SUBMITTED -> ACKED -> PARTIALLY_FILLED -> FILLED`；撤单路径为 `ACKED/PARTIALLY_FILLED -> CANCEL_REQUESTED -> CANCELED`。只有 venue execution event 中的 `CancelAck` 才能确认 `CANCELED`。发生 Partial Fill 后，预计仓位使用已成交 Position 加订单 `remainingQty`，不会把整张原始订单重复计入，也不会过早移除 Pending。
 
 第二轮加入了最小逐仓保证金账户。行情明确区分 `lastPrice / markPrice / indexPrice`：Baseline 双均线和模拟订单价格只使用 last，逐仓账户、未实现盈亏与强平触发只使用 mark，index 目前仅代表外部参考输入；本模拟器没有实现交易所级 mark-price 推导。强平触发与执行已分开建模，但当前 paper simplification 仍假设 `liquidation execution price = mark price`，日志会同时记录 trigger mark 与 execution price。下单前检查目标仓位初始保证金，`equity <= maintenanceMargin` 时模拟强平、向 exchange 发起 cancel request，并在 CancelAck 后确认 `CANCELED`，然后停止策略继续下单。它仍然只是 paper model，不代表真实交易所清算流程。
 
-第三轮加入版本化 checkpoint。ACK、有效 Fill 和模拟强平后会原子写入 `.runtime/perp-bot-state.json`，保存仓位、Fill 幂等集合、订单状态和下一模拟订单编号。正常完成的状态可恢复；如果重启时仍有 unresolved order，机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
+第三轮加入版本化 checkpoint。submit 前的 client intent、ACK、有效 Fill 和模拟强平会原子写入 `.runtime/perp-bot-state.json`，保存客户端订单 identity/序号、仓位、Fill 幂等集合和订单状态；simulator 自己的 venue sequence 不属于 Core checkpoint。正常完成的状态可恢复；如果重启时仍有 unresolved order（包括 `SUBMITTED`），机器人进入 `RECOVERY_REQUIRED` 并停止下单，不猜测该订单最终是否成交。
 
 Reconciliation 目前提供只读比较边界：输入本地 Position / open orders 与权威 exchange snapshot，报告 position mismatch、missing/unexpected order 和 remaining quantity mismatch。它不会自动覆盖任一侧状态；恢复策略仍保持 fail-closed。
 
@@ -77,7 +79,7 @@ npm test
 - `src/market.ts`: 模拟行情
 - `src/strategy.ts`: 简单双均线信号
 - `src/risk.ts`: 最小风控
-- `src/exchange.ts`: 模拟 ACK 和延迟 Fill
+- `src/exchange.ts`: 最小 execution command/event boundary 与模拟 adapter
 - `src/order-tracker.ts`: In-flight order、累计成交、剩余数量与状态
 - `src/margin.ts`: 逐仓权益、保证金门槛与强平条件
 - `src/state-store.ts`: 版本化 checkpoint 与原子 JSON 文件存储

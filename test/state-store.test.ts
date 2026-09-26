@@ -43,7 +43,7 @@ function sampleCheckpoint(): BotCheckpoint {
       processedFillIds: []
     },
     orderTrackerState: { orders: [] },
-    nextOrderId: 1,
+    nextClientOrderSequence: 1,
     halted: false,
     lastMarkPrice: null
   };

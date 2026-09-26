@@ -57,7 +57,10 @@ export function reconcileState(
     issues.push({ type: "POSITION_MISMATCH", localSignedQty, exchangeSignedQty });
   }
 
-  const localById = uniqueByOrderId(localOpenOrders, "local");
+  const localById = uniqueByOrderId(
+    localOpenOrders.map((order) => ({ ...order, orderId: order.clientOrderId })),
+    "local"
+  );
   const exchangeById = uniqueByOrderId(exchange.openOrders, "exchange");
 
   for (const [orderId, localOrder] of localById) {
